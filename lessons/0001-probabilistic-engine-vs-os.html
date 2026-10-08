@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>第 01 讲：概率机不是操作系统 —— LLM 的本质与确定性收敛</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <header>
+    <span class="meta-badge">篇章 1 · 认知重构 · 第 01 讲</span>
+    <h1>概率机不是操作系统：LLM 的本质与确定性收敛</h1>
+    <div class="subtitle">建议阅读时长：8 分钟 | 架构师心智模型篇</div>
+  </header>
+
+  <section>
+    <h2>一、直觉陷阱：把大模型当成了 JVM / Linux 内核</h2>
+    <p>很多传统软件工程师刚接触 AI 时，最容易犯的一个架构直觉错误是：<strong>把 LLM 当成一个可以精准执行代码的 CPU / 虚拟机</strong>。</p>
+    <p>我们习惯的经典确定性系统（如 Android Runtime / ART）：</p>
+    <pre>输入 A ──▶ 严格执行指令流 ──▶ 100% 确定性输出 B</pre>
+    <p>但大语言模型（LLM）从物理本质上，是一个基于 Transformer 的<strong>自回归概率采样器（Next-token Predictor）</strong>。它的本质公式是：</p>
+    <pre>P(下一个 Token | 当前所有前面的上下文 Tokens)</pre>
+    <p>它并不是在“思考出真理”，而是在高维向量空间中，根据你给的上下文，<strong>计算概率最高的词拼接在后面</strong>。</p>
+
+    <div class="analogy">
+      <div class="analogy-title">Android 架构师类比</div>
+      LLM 的行为更像是一个<strong>极度庞大、带有模糊记忆的输入法联想引擎（T9 词库高维版）</strong>，而不是 Dalvik/ART 虚拟机。你绝不能指望联想输入法替你做银行账目结算。
+    </div>
+  </section>
+
+  <section>
+    <h2>二、核心冲突：概率采样 vs 软件工程确定性</h2>
+    <p>这带来了软件系统集成中最核心的矛盾：</p>
+    <table>
+      <thead>
+        <tr>
+          <th>对比维度</th>
+          <th>经典系统 (Android/Backend)</th>
+          <th>LLM 认知系统</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>执行基础</strong></td>
+          <td>逻辑门 / 状态机 / 严格指令集</td>
+          <td>概率分布采样的连续向量</td>
+        </tr>
+        <tr>
+          <td><strong>幂等性</strong></td>
+          <td>相同输入必然产生相同输出</td>
+          <td>相同 Prompt 可能产生不同表述 (除非温度 T=0)</td>
+        </tr>
+        <tr>
+          <td><strong>异常边界</strong></td>
+          <td>抛出明确 Exception / Crash</td>
+          <td>一本正经地胡说八道 (幻觉 Hallucination)</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>三、架构师的破局心法：如何把“概率”收敛为“确定性”？</h2>
+    <p>既然 LLM 是概率机，为什么现代 Agent 还能用来写代码、调 API、做系统调度？核心在于**确定性约束架构**：</p>
+
+    <div class="card">
+      <div class="card-title">1. 从自由发挥到类型约束（Schema-First）</div>
+      <p>如果你让大模型自由生成一段文字，它的搜索空间是整个词表（数十万维）；但如果你用 <code>JSON Schema</code>（如定义 <code>{"action": "click", "target_id": string}</code>）强行约束它的采样输出，本质上就是在<strong>把概率搜索空间收窄到一个极小的、合法的有限状态机（FSM）子集</strong>中。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">2. 双轨系统：LLM 负责决策路由，宿主系统负责物理执行</div>
+      <p>千万不要让 LLM 在它的“大脑”里算数学或查数据库。现代 Agent 的黄金架构原则是：</p>
+      <pre>
+┌────────────────┐     JSON 意图      ┌──────────────────┐
+│   LLM (概率大脑)  │ ───────────────▶ │  宿主系统 (确定性)  │
+│ 负责意图理解与决策 │                  │  执行 Bash / API │
+└────────────────┘ ◀─────────────── └──────────────────┘
+                      真实物理结果
+      </pre>
+      <p>LLM 仅输出调用请求（如 <code>queryDatabase(id=102)</code>），真正发起通信的是确定性的宿主宿主程序（如 Python/Go 引擎）。这就像 Android 中主线程通过 Handler 发送 Message，具体网络操作由 OkHttp 严格执行一样。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="takeaway">
+      <h3>今日 1 分钟架构底线（Takeaway）</h3>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary);">
+        <li><strong>不要对概率系统抱有确定性幻想</strong>：对模型输出永远保持“不可信”防御性编程心态。</li>
+        <li><strong>收敛是唯一解法</strong>：严格的类型定义（JSON Schema）、沙箱环境与状态校验，是连接概率 AI 与确定性软件工程的唯一桥梁。</li>
+      </ol>
+    </div>
+  </section>
+</body>
+</html>

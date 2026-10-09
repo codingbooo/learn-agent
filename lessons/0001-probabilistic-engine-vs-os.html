@@ -10,7 +10,32 @@
     const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     mermaid.initialize({
       startOnLoad: true,
-      theme: isDark ? 'dark' : 'neutral',
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: isDark ? '#ffffff' : '#ffffff'
+      },
       securityLevel: 'loose',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     });
@@ -94,17 +119,15 @@ sequenceDiagram
     actor User as 👤 用户
     participant Agent as 🧠 LLM (概率大脑)
     participant Host as ⚙️ 宿主执行系统 (确定性)
-    participant Service as 🗄️ 真实物理服务 (API/DB/Shell)
+    participant Service as 🗄️ 物理服务 (API/DB)
 
-    User->>Agent: 提出高层意图 (如: 查询用户 102 账单)
-    Note over Agent: 概率意图解析 + 生成强类型 Tool Call
-    Agent->>Host: 输出结构化 JSON: queryBilling(id=102)
-    Note over Host: 严格参数校验与权限审查
-    Host->>Service: 执行真实物理调用
-    Service-->>Host: 返回确定性物理结果
-    Host-->>Agent: Observation 注入上下文
-    Note over Agent: 归纳汇总并生成自然语言回复
-    Agent-->>User: 交付最终结果
+    User->>Agent: 提需求 (查用户102账单)
+    Agent->>Host: 输出结构化参数 query(id=102)
+    Note over Host: 严格参数校验与鉴权
+    Host->>Service: 发起物理请求
+    Service-->>Host: 返回真实物理数据
+    Host-->>Agent: 数据回填上下文
+    Agent-->>User: 汇总并交付结果
       </pre>
       <p>LLM 仅输出调用请求（如 <code>queryDatabase(id=102)</code>），真正发起通信的是确定性的宿主宿主程序（如 Python/Go 引擎）。这就像 Android 中主线程通过 Handler 发送 Message，具体网络操作由 OkHttp 严格执行一样。</p>
     </div>

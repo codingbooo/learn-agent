@@ -142,17 +142,19 @@ sequenceDiagram
       </ol>
     </div>
 
-    <details style="margin-top: 18px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
-      <summary style="font-weight: 600; cursor: pointer; color: var(--accent);">🎯 架构师课后微测验（点击展开答案）</summary>
-      <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
-        <p><strong>思考题</strong>：当用户要求 Agent 排查线上日志中的 <code>NullPointerException at PaymentActivity.kt:142</code> 时，为什么暴力向量检索（Embedding Similarity）往往召回一堆通用异常文档，而传统的全文检索（FTS5）能秒级命中？</p>
-        <div style="background: var(--bg-secondary); padding: 10px; border-radius: 6px; margin-top: 6px; border-left: 3px solid var(--accent);">
-          <strong>架构解析</strong>：<br>
+    <div class="card" style="margin-top: 18px; padding: 14px;">
+      <div class="card-title" style="color: var(--accent); font-size: 15px;">🎯 架构师课后微测验</div>
+      <p style="margin-bottom: 10px; font-weight: 500; color: var(--text-primary);">
+        <strong>思考题</strong>：当用户要求 Agent 排查线上日志中的 <code>NullPointerException at PaymentActivity.kt:142</code> 时，为什么暴力向量检索（Embedding Similarity）往往召回一堆通用异常文档，而传统的全文检索（FTS5）能秒级命中？
+      </p>
+      <details style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+        <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 13px;">🔍 点击展开：架构解析与参考答案</summary>
+        <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
           向量检索依赖<strong>模糊语义共现</strong>，像类名、行号、UUID 这类极具区分度的“硬关键字（Keyword Token）”在高维语义空间中会被稀释；而全文倒排索引（FTS5 / BM25）是<strong>精确字面频次与词元倒排</strong>，对唯一标识符和报错行号具有 100% 精准召回率。<br>
           <strong>工业级混合解法</strong>：先走 BM25/FTS5 过滤精确命中集，再辅以向量做语义重排（Rerank）。
         </div>
-      </div>
-    </details>
+      </details>
+    </div>
   </section>
 </body>
 </html>

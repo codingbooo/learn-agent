@@ -130,17 +130,19 @@ sequenceDiagram
       </ol>
     </div>
 
-    <details style="margin-top: 18px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
-      <summary style="font-weight: 600; cursor: pointer; color: var(--accent);">🎯 架构师课后微测验（点击展开答案）</summary>
-      <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
-        <p><strong>思考题</strong>：某工程师为了方便后台排查问题，在 System Prompt 头部加了一行动态代码 <code>Current Time: 2026-10-08 14:30:15</code>。该改动上线后，调用成本暴涨 8 倍且 P99 延迟飙升，为什么？</p>
-        <div style="background: var(--bg-secondary); padding: 10px; border-radius: 6px; margin-top: 6px; border-left: 3px solid var(--accent);">
-          <strong>架构解析</strong>：<br>
+    <div class="card" style="margin-top: 18px; padding: 14px;">
+      <div class="card-title" style="color: var(--accent); font-size: 15px;">🎯 架构师课后微测验</div>
+      <p style="margin-bottom: 10px; font-weight: 500; color: var(--text-primary);">
+        <strong>思考题</strong>：某工程师为了方便后台排查问题，在 System Prompt 头部加了一行动态代码 <code>Current Time: 2026-10-08 14:30:15</code>。该改动上线后，调用成本暴涨 8 倍且 P99 延迟飙升，为什么？
+      </p>
+      <details style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+        <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 13px;">🔍 点击展开：架构解析与参考答案</summary>
+        <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
           KV Cache 依赖<strong>严格前缀匹配（Prefix Hash）</strong>。将秒级变化的时间戳放在最前方的 System Prompt 里，导致每一次请求的最开始数十个字符全部不同，直接使整个头部数千 Tokens 的 KV 缓存<strong>命中率彻底归零（0%）</strong>！所有后续工具定义、历史消息被迫进行昂贵的全量预填充计算。<br>
           <strong>正确做法</strong>：时间戳应放在单次用户消息末尾，或封装为 <code>getCurrentTime()</code> 工具由模型按需调用。
         </div>
-      </div>
-    </details>
+      </details>
+    </div>
   </section>
 </body>
 </html>

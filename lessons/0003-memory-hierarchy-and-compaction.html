@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>第 03 讲：记忆系统的多级分层与冷热数据置换</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">篇章 1 · 认知重构 · 第 03 讲</span>
+    <h1>记忆系统的多级分层与冷热数据置换</h1>
+    <div class="subtitle">建议阅读时长：8 分钟 | 架构师心智模型篇</div>
+  </header>
+
+  <section>
+    <h2>一、直觉陷阱：以为“向量数据库(Vector DB)”能包打一切</h2>
+    <p>很多技术方案一谈到 Agent 长期记忆，第一反应就是：把用户所有对话切片，存进向量数据库，每次提问做 Cosine 相似度检索。</p>
+    <p>在实际工业落地中，<strong>纯语义向量检索的召回率经常翻车</strong>。比如用户问：“我上周二改的那个 build.gradle 文件路径在哪？”，向量数据库往往会召回一堆关于“Gradle 插件开发”的泛义文章，反而漏掉精准的路径。</p>
+    <p>优秀的 Agent 架构从不依赖单一存储，而是像操作系统一样，设计严格的<strong>多级存储金字塔（Storage Hierarchy）</strong>。</p>
+
+    <div class="analogy">
+      <div class="analogy-title">Android 架构师类比</div>
+      Agent 记忆系统完全对标 Android 的存储拓扑：<strong>Context 窗口 = RAM</strong>（快且贵，进程重启清空）；<strong>持久化 Memory = Room/SQLite</strong>（结构化精准存储）；<strong>长尾历史 = 磁盘文件/网络云端</strong>（冷数据，按需分页换入）。
+    </div>
+  </section>
+
+  <section>
+    <h2>二、Agent 记忆的三级存储拓扑架构</h2>
+    <p>工业级 Agent（包括你正在使用的 Hermes / Claude Code）采用如下分层机制：</p>
+
+    <pre class="mermaid">
+graph TD
+    A["L1 工作记忆: Context Window (RAM)"] -->|"容量饱和 (Trigger Compaction)"| B["L2 语义/结构记忆: SQLite + FTS5 (Flash)"]
+    B -->|"显式提取沉淀"| C["L3 核心事实: Profile / Standing Rules (ROM)"]
+    
+    subgraph "检索策略"
+    D["精准匹配: 倒排索引全文搜索 (FTS5)"]
+    E["模糊探索: 语义向量检索 (Embedding)"]
+    end
+    
+    B -.-> D
+    B -.-> E
+    style A fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px
+    style B fill:#fef3c7,stroke:#d97706,stroke-width:1.5px
+    style C fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px
+    </pre>
+
+    <table>
+      <thead>
+        <tr>
+          <th>层级</th>
+          <th>物理载体</th>
+          <th>存活周期</th>
+          <th>典型内容</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>L1 工作记忆</strong></td>
+          <td>Prompt 上下文 (RAM)</td>
+          <td>单次会话内</td>
+          <td>当前任务的工具返回日志、临时变量</td>
+        </tr>
+        <tr>
+          <td><strong>L2 检索记忆</strong></td>
+          <td>SQLite / JSONL (SSD)</td>
+          <td>跨会话持久</td>
+          <td>历史会话归档、日志全文检索 (FTS5)</td>
+        </tr>
+        <tr>
+          <td><strong>L3 静态特质</strong></td>
+          <td>配置文件 / 核心规则 (ROM)</td>
+          <td>永久固化</td>
+          <td>用户身份偏好、设备环境、工程红线</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>三、冷热置换：Context 压缩（Compaction）机制</h2>
+    <p>当多轮交互导致 L1 工作内存接近上限时，系统必须触发<strong>垃圾回收与分页置换</strong>，这就是“上下文压缩（Context Compaction）”：</p>
+
+    <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Agent as 🤖 Agent 运行器
+    participant LLM as 🧠 压缩专用模型
+    participant DB as 💾 持久化状态库 (SQLite)
+
+    Note over Agent: 检测到当前上下文 > 80% 容量警戒线
+    Agent->>DB: 1. 全量完整快照归档持久化 (保留审计链)
+    Agent->>LLM: 2. 提交前 50 轮历史: "提取核心决策与状态"
+    LLM-->>Agent: 3. 输出提炼摘要 (从 50K 压缩至 1K Tokens)
+    Note over Agent: 4. 丢弃原始冗余工具输出，仅保留核心摘要 + 最近 5 轮交互
+    Note over Agent: 上下文水位回落至 20%，继续无缝响应
+    </pre>
+  </section>
+
+  <section>
+    <div class="takeaway">
+      <h3>今日 1 分钟架构底线（Takeaway）</h3>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary);">
+        <li><strong>不要迷信纯语义向量</strong>：工程落地中，结构化元数据（时间、标签）+ 倒排索引全文检索（FTS5/BM25）的准确度远胜暴力向量相似度。</li>
+        <li><strong>分层治理是唯一正道</strong>：短期工作记忆靠压缩归纳，长期静态事实靠独立配置，历史冷数据靠检索拉取。</li>
+      </ol>
+    </div>
+  </section>
+</body>
+</html>

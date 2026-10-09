@@ -5,15 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>第 01 讲：概率机不是操作系统 —— LLM 的本质与确定性收敛</title>
   <link rel="stylesheet" href="../assets/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-  <script>
-    document.addEventListener("DOMContentLoaded", function() {
-      const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      mermaid.initialize({
-        startOnLoad: true,
-        theme: isDark ? "dark" : "neutral",
-        flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis" }
-      });
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: isDark ? 'dark' : 'neutral',
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     });
   </script>
 </head>
@@ -28,14 +27,14 @@
     <h2>一、直觉陷阱：把大模型当成了 JVM / Linux 内核</h2>
     <p>很多传统软件工程师刚接触 AI 时，最容易犯的一个架构直觉错误是：<strong>把 LLM 当成一个可以精准执行代码的 CPU / 虚拟机</strong>。</p>
     <p>我们习惯的经典确定性系统（如 Android Runtime / ART）：</p>
-    <div class="mermaid">
-    graph LR
-      A[输入数据 A] --> B[ART / JVM 字节码解释与 JIT]
-      B --> C[严格机器指令流]
-      C --> D[100% 确定性输出 B]
-      style A fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px
-      style D fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px
-    </div>
+    <pre class="mermaid">
+graph LR
+    A[输入数据 A] --> B[ART / JVM 字节码解释与 JIT]
+    B --> C[严格机器指令流]
+    C --> D[100% 确定性输出 B]
+    style A fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px
+    style D fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px
+    </pre>
     <p>但大语言模型（LLM）从物理本质上，是一个基于 Transformer 的<strong>自回归概率采样器（Next-token Predictor）</strong>。它的本质公式是：</p>
     <pre>P(下一个 Token | 当前所有前面的上下文 Tokens)</pre>
     <p>它并不是在“思考出真理”，而是在高维向量空间中，根据你给的上下文，<strong>计算概率最高的词拼接在后面</strong>。</p>
@@ -89,24 +88,24 @@
     <div class="card">
       <div class="card-title">2. 双轨系统：LLM 负责决策路由，宿主系统负责物理执行</div>
       <p>千万不要让 LLM 在它的“大脑”里算数学或查数据库。现代 Agent 的黄金架构原则是：</p>
-      <div class="mermaid">
-      sequenceDiagram
-        autonumber
-        actor User as 👤 用户
-        participant Agent as 🧠 LLM (概率大脑)
-        participant Host as ⚙️ 宿主执行系统 (确定性)
-        participant Service as 🗄️ 真实物理服务 (API/DB/Shell)
+      <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor User as 👤 用户
+    participant Agent as 🧠 LLM (概率大脑)
+    participant Host as ⚙️ 宿主执行系统 (确定性)
+    participant Service as 🗄️ 真实物理服务 (API/DB/Shell)
 
-        User->>Agent: 提出高层意图 (如: 查询用户 102 账单)
-        Note over Agent: 概率意图解析 + 生成强类型 Tool Call
-        Agent->>Host: 输出结构化 JSON: queryBilling(id=102)
-        Note over Host: 严格参数校验与权限审查
-        Host->>Service: 执行真实物理调用
-        Service-->>Host: 返回确定性物理结果
-        Host-->>Agent: Observation 注入上下文
-        Note over Agent: 归纳汇总并生成自然语言回复
-        Agent-->>User: 交付最终结果
-      </div>
+    User->>Agent: 提出高层意图 (如: 查询用户 102 账单)
+    Note over Agent: 概率意图解析 + 生成强类型 Tool Call
+    Agent->>Host: 输出结构化 JSON: queryBilling(id=102)
+    Note over Host: 严格参数校验与权限审查
+    Host->>Service: 执行真实物理调用
+    Service-->>Host: 返回确定性物理结果
+    Host-->>Agent: Observation 注入上下文
+    Note over Agent: 归纳汇总并生成自然语言回复
+    Agent-->>User: 交付最终结果
+      </pre>
       <p>LLM 仅输出调用请求（如 <code>queryDatabase(id=102)</code>），真正发起通信的是确定性的宿主宿主程序（如 Python/Go 引擎）。这就像 Android 中主线程通过 Handler 发送 Message，具体网络操作由 OkHttp 严格执行一样。</p>
     </div>
   </section>

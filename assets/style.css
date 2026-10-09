@@ -136,14 +136,14 @@ pre {
   margin: 16px 0;
 }
 
-.mermaid {
-  margin: 16px 0;
+pre.mermaid {
+  background: var(--bg-card);
+  color: inherit;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   display: flex;
   justify-content: center;
-  background: var(--bg-card);
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
   overflow-x: auto;
 }
 

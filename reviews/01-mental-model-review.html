@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>篇章 1 综合复习：底层心智重构与系统权衡决策</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">里程碑复习 · 篇章 1 综合</span>
+    <h1>篇章 1 综合复习：底层心智重构与系统权衡决策</h1>
+    <div class="subtitle">建议阅读时长：10 分钟 | 架构决策评估篇</div>
+  </header>
+
+  <section>
+    <h2>一、篇章核心心智速查矩阵</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>核心概念</th>
+          <th>物理本质</th>
+          <th>Android / 系统工程对标</th>
+          <th>架构第一红线</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>01 概率采样机</strong></td>
+          <td>自回归 Next-token 概率采样</td>
+          <td>T9 联想输入法 (非 ART 虚拟机)</td>
+          <td>严禁在模型大脑中算账，强制 Tool Call</td>
+        </tr>
+        <tr>
+          <td><strong>02 上下文与缓存</strong></td>
+          <td>易失性 RAM + 增量前缀 KV Cache</td>
+          <td>Activity savedInstanceState 序列化</td>
+          <td>头部前缀必须严格不可变，禁止塞动态时间戳</td>
+        </tr>
+        <tr>
+          <td><strong>03 记忆多级分层</strong></td>
+          <td>RAM / 倒排索引全文库 / 静态配置</td>
+          <td>RAM / Room(SQLite) / ROM 固件</td>
+          <td>绝不迷信暴力语义向量，精确检索靠 FTS5</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>二、篇章 1 架构拓扑总览</h2>
+    <pre class="mermaid">
+graph TD
+    User["👤 用户请求"] --> Client["📱 宿主客户端 (Android/Server)"]
+    Client --> Prefix["🧱 静态不可变前缀 (System Prompt + Tools)"]
+    Prefix --> Dynamic["💬 动态会话历史 (KV Cache 增量追加)"]
+    
+    subgraph "云端 LLM 推理集群"
+    Prefix -.->|"前缀 Hash 命中 (1折成本 / 极速)"| KVCache["⚡ 显存 KV Cache"]
+    Dynamic --> Decoder["🧠 概率采样生成意图"]
+    end
+    
+    Decoder -->|"JSON Schema 强约束"| ToolCall["⚙️ 结构化 Tool Call 请求"]
+    ToolCall --> Storage["💾 宿主存储层 (FTS5 检索 + 状态机持久化)"]
+    Storage --> Service["🌐 物理世界执行 (真实 API/Shell)"]
+    Service --> Client
+    style Prefix fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px
+    style KVCache fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px
+    style ToolCall fill:#fef3c7,stroke:#d97706,stroke-width:1.5px
+    </pre>
+  </section>
+
+  <section>
+    <h2>三、实战架构评审题（Capstone Dilemma）</h2>
+    <div class="card">
+      <div class="card-title">🚨 场景评审：突发性能与成本危机</div>
+      <p><strong>业务背景</strong>：团队上线了一个“线上故障自主排查 Agent”。运营一周后，财务发出预警：API Token 消耗是预期的 12 倍；同时客服反馈高频对话到达第 20 轮之后，Agent 经常开始胡言乱语、报错丢失前置上下文。</p>
+      <p><strong>技术排查发现以下 3 个实现细节</strong>，请指出其设计缺陷：</p>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary); line-height: 1.8;">
+        <li>为了让 Agent 知道当前时间，在 System Prompt 开头注入了 <code>当前时间: yyyy-MM-dd HH:mm:ss</code>；</li>
+        <li>为了让 Agent 能查日志，写了一个包含 30 种日志检索过滤参数的巨型 Tool，并在每轮交互中把上一次检索到的 5000 行原始 Log 完整塞入历史；</li>
+        <li>未实现任何记忆分层机制，所有历史会话直接无限向后拼接直到触发 128k 窗口硬上限。</li>
+      </ol>
+    </div>
+
+    <details style="margin-top: 18px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+      <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 15px;">🔍 点击展开：架构师级整改方案</summary>
+      <div style="margin-top: 12px; font-size: 14px; color: var(--text-secondary); line-height: 1.7;">
+        <p><strong>整改方案 1（拯救成本与延迟）</strong>：将动态时间戳从 System Prompt 剥离，固定头部 System Prompt 与工具 Schema；时间戳下沉到用户单次消息或封装为工具。<strong>收益：KV Cache 命中率从 0% 跃升至 85%+，费用立降 80%</strong>。</p>
+        <p><strong>整改方案 2（治理上下文污染）</strong>：宿主端建立日志过滤中间件，不要把 5000 行未清洗 Log 灌进上下文。强制通过本地 SQLite/FTS5 过滤，仅将前 5 条关键 StackTrace 注入 LLM。<strong>收益：避免注意力被噪音淹没，大幅提升诊断准度</strong>。</p>
+        <p><strong>整改方案 3（垃圾回收与状态持久化）</strong>：设立上下文容量水位线（如 70%）。达到阈值后自动触发 Compaction：将历史交互全量冷备份到 SQLite，调用轻量模型归纳出关键排查进展摘要，上下文降回 20% 水位继续运行。<strong>收益：彻底根除 20 轮后的幻觉与上下文爆仓崩溃</strong>。</p>
+      </div>
+    </details>
+  </section>
+</body>
+</html>

@@ -141,6 +141,18 @@ sequenceDiagram
         <li><strong>收敛是唯一解法</strong>：严格的类型定义（JSON Schema）、沙箱环境与状态校验，是连接概率 AI 与确定性软件工程的唯一桥梁。</li>
       </ol>
     </div>
+
+    <details style="margin-top: 18px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+      <summary style="font-weight: 600; cursor: pointer; color: var(--accent);">🎯 架构师课后微测验（点击展开答案）</summary>
+      <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+        <p><strong>思考题</strong>：为什么在金融对账或订单结算场景下，哪怕大模型声称计算准度高达 99.9%，架构上也必须严禁其在“大脑”里算账，必须强制走 Tool Calling？</p>
+        <div style="background: var(--bg-secondary); padding: 10px; border-radius: 6px; margin-top: 6px; border-left: 3px solid var(--accent);">
+          <strong>架构解析</strong>：<br>
+          1. <strong>概率无下限</strong>：在传统系统里，99.9% 是可用性 SLA；但在单笔计算里，0.1% 的概率错误会导致资金账目不可逆崩塌，且 LLM 无法感知自己何时算错。<br>
+          2. <strong>审计链与可观测性缺失</strong>：LLM 内部思考过程是黑盒矩阵运算，没有机器可读的日志（Trace Log）。通过 Tool Calling 委托给确定性物理服务，不仅保证 100% 幂等，还能保留完整的审计与对账链路。
+        </div>
+      </div>
+    </details>
   </section>
 </body>
 </html>

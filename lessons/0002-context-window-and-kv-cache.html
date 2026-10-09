@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>第 02 讲：上下文窗口的物理本质与 KV 缓存机制</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">篇章 1 · 认知重构 · 第 02 讲</span>
+    <h1>上下文窗口的物理本质与 KV 缓存机制</h1>
+    <div class="subtitle">建议阅读时长：8 分钟 | 架构师心智模型篇</div>
+  </header>
+
+  <section>
+    <h2>一、上下文（Context）是 Agent 的易失性 RAM</h2>
+    <p>做 Android 开发，你一定对内存敏感：RAM 空间有限，对象常驻容易 OOM，进程被杀前需要持久化。</p>
+    <p>在 Agent 系统里：<strong>Context Window（上下文窗口）就是大模型的物理 RAM</strong>。所有给大模型看的系统提示词、工具定义、历史聊天、工具返回结果，都必须塞进这个“内存窗口”中。</p>
+    <p>但它有两大反直觉的物理特性：</p>
+    <ul>
+      <li><strong>无状态性（Stateless）</strong>：大模型服务端本身不保存你上一秒的对话。每一次你发消息，客户端必须把<strong>全部历史 Token 从头到尾重新发一次</strong>。</li>
+      <li><strong>二次方注意力开销（O(N²) Complexity）</strong>：上下文不是无限塞的。随着 Token 数量翻倍，注意力的计算开销和内存占用呈平方级暴增。</li>
+    </ul>
+
+    <div class="analogy">
+      <div class="analogy-title">Android 架构师类比</div>
+      如果把调用 LLM 比作启动一个组件：它不是常驻的 <code>Service</code>，而是<strong>每次请求都被彻底杀掉后重建的 <code>Activity</code></strong>。每次渲染画面，你都必须把整个 <code>savedInstanceState Bundle</code> 完整重新反序列化一遍。
+    </div>
+  </section>
+
+  <section>
+    <h2>二、Prompt Caching（KV 缓存）：拯救成本与延迟的银弹</h2>
+    <p>既然每次都要重发整个历史，为什么现在的 Agent（如 Claude Code / Cursor）反应越来越快，费用反而下降了 90%？核心技术就是 <strong>KV Cache（键值缓存）</strong>。</p>
+    <p>大模型处理文本分为两阶段：<strong>Prefill（预填充计算）</strong> 和 <strong>Decode（逐字解码）</strong>。预填充阶段计算出的注意力矩阵，可以保存在显存中复用。</p>
+
+    <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant App as 📱 Agent 宿主
+    participant API as 🌐 云端 API 网关
+    participant GPU as ⚡ 显卡显存 (KV Cache)
+
+    Note over App: 第 1 轮交互: 包含基础 System Prompt (4000 Tokens)
+    App->>API: 提交完整上下文
+    API->>GPU: 完整全量预填充计算
+    GPU-->>API: 缓存不可变前缀的 KV 向量 (Hash 命中)
+    API-->>App: 返回第 1 轮结果 (全量计费)
+
+    Note over App: 第 2 轮交互: 前缀完全相同，仅末尾追加新消息
+    App->>API: 提交上下文 (前缀未变 + 新增 200 Tokens)
+    API->>GPU: 前缀命中 KV Cache! 仅计算末尾增量
+    GPU-->>API: 毫秒级生成响应
+    API-->>App: 极速返回 (命中部分享 1 折优惠，延迟降 80%)
+    </pre>
+  </section>
+
+  <section>
+    <h2>三、架构师必背：破坏 Cache 的“致命禁忌”</h2>
+    <p>KV Cache 依赖<strong>严格的前缀哈希匹配（Prefix Matching）</strong>。只要前缀发生哪怕 1 个字节的变动，后面的缓存全部失效！</p>
+    <table>
+      <thead>
+        <tr>
+          <th>操作方式</th>
+          <th>Cache 状态</th>
+          <th>架构后果</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>在上下文<strong>末尾追加</strong>新消息</td>
+          <td>✅ 命中前缀</td>
+          <td>享受极速响应与 1 折推理成本</td>
+        </tr>
+        <tr>
+          <td>动态在 System Prompt 插入实时时间戳</td>
+          <td>❌ 彻底失效</td>
+          <td>每次请求前缀都不同，缓存命中率 0%</td>
+        </tr>
+        <tr>
+          <td>对话中途动态修改/增删 Tools 工具定义</td>
+          <td>❌ 彻底失效</td>
+          <td>工具描述在前置位置，破坏整体前缀 Hash</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <div class="takeaway">
+      <h3>今日 1 分钟架构底线（Takeaway）</h3>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary);">
+        <li><strong>上下文即 RAM</strong>：它是昂贵的易失性资源，不能无休止往里堆积未提炼的日志。</li>
+        <li><strong>前缀稳定性神圣不可侵犯</strong>：系统级 Prompt、技能声明、工具 Schema 必须固化在头部，绝对不要在会话中途动态变更。</li>
+      </ol>
+    </div>
+  </section>
+</body>
+</html>

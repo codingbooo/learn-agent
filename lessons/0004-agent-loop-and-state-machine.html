@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>第 04 讲：Agent 运行循环与状态机 —— 拆解 ReAct Loop 的工程本质</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">篇章 2 · 运行时与控制流 · 第 04 讲</span>
+    <h1>Agent 运行循环与状态机 —— 拆解 ReAct Loop 的工程本质</h1>
+    <div class="subtitle">建议阅读时长：8 分钟 | 运行时控制流篇</div>
+  </header>
+
+  <section>
+    <h2>一、破除神秘感：Agent 不是活体生物，是有限状态机</h2>
+    <p>很多技术宣传常将 AI Agent 拟人化为“能自主思考行动的数字打工人”。从系统架构师的视角看，这种拟人化极具误导性。</p>
+    <p>工业级 Agent 的物理本质，仅仅是一个由外部宿主进程驱动的 <strong>Event Loop（事件循环）驱动的有限状态机（FSM）</strong>。大语言模型本身没有任何自主意识，它既不会主动触发时钟中断，也不会主动拉起后台线程；它只是一个被宿主程序一次次轮询调用的“下一跳状态决策函数”。</p>
+
+    <div class="analogy">
+      <div class="analogy-title">Android 架构师类比</div>
+      Agent 运行时完全对标 Android 主线程的消息泵：<strong>LLM 是无状态的业务解码器</strong>；<strong>Agent Runtime 是 Looper</strong>；<strong>会话上下文数组是 MessageQueue</strong>。Looper 从队列取出历史上下文投递给模型，模型返回 Tool Call 相当于发送了一个带回调的 <code>Message / Runnable</code>。宿主执行完毕后将结果封装为 Observation 重新 <code>enqueueMessage()</code>，驱动下一次 <code>loop()</code> 迭代。
+    </div>
+  </section>
+
+  <section>
+    <h2>二、ReAct 范式的状态转移拓扑</h2>
+    <p>工业界最主流的 Agent 执行闭环是 <strong>ReAct（Reasoning + Acting）</strong> 模式。宿主程序与模型之间通过严格的状态转移闭环协同运行：</p>
+
+    <pre class="mermaid">
+stateDiagram-v2
+    [*] --> Idle: 等待输入
+    Idle --> Reasoning: 用户发出 Prompt
+    
+    state Reasoning {
+        [*] --> ContextPacking: 拼接历史与 Tool 声明
+        ContextPacking --> ModelInfer: LLM 前向推理采样
+    }
+
+    ModelInfer --> Finished: 输出普通文本 (终态回答)
+    ModelInfer --> Acting: 输出结构化 Tool Call
+    
+    state Acting {
+        ValidateSchema --> HostExec: 沙箱或 OS 执行工具
+        HostExec --> Observe: 捕获 stdout/stderr 结果
+    }
+
+    Acting --> Reasoning: 组装 Observation 追加至上下文
+    Finished --> [*]: 渲染响应并等待下次唤醒
+    </pre>
+
+    <p>在这套闭环中，传统确定性工程与大模型概率决策的分工边界如下表所示：</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>对比维度</th>
+          <th>经典软件工程状态机 (如 Android StateMachine)</th>
+          <th>Agent 运行时状态机 (ReAct FSM)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>状态转移驱动</strong></td>
+          <td>编译期固化的硬编码规则 (if-else / switch-case)</td>
+          <td>运行时自回归采样预测的概率意图</td>
+        </tr>
+        <tr>
+          <td><strong>决策输入容错</strong></td>
+          <td>强类型枚举与严格协议，非法输入直接抛异常</td>
+          <td>高维自然语言容错 + 宿主端 JSON Schema 强制校验</td>
+        </tr>
+        <tr>
+          <td><strong>状态转移路径</strong></td>
+          <td>确定性 DAG 有向无环图，完全可静态推演</td>
+          <td>动态试错式路径（探索、遇错、自我修正）</td>
+        </tr>
+        <tr>
+          <td><strong>终止判定保障</strong></td>
+          <td>代码显式定义的终态枚举</td>
+          <td>双轨判定：模型自判完成态 + 宿主最大步数熔断 (Max Steps)</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>三、架构师视角：工业级运行时必须治理的工程陷阱</h2>
+    <p>在 Demo 级别编写一个 <code>while True: step()</code> 的 Agent 循环只需十行代码，但在生产级长链任务中，宿主运行时必须部署三道确定性防线：</p>
+
+    <div class="card">
+      <div class="card-title">🚨 1. 死循环熔断（Action Loop Detection）</div>
+      <p style="font-size: 14px; margin-bottom: 0;">当工具执行持续报错（如文件不存在）时，概率模型极易陷入“重试-报错-原样重试”的死锁循环。成熟的 Runtime 必须维护滑动窗口（Sliding Window），计算最近 N 次 Tool Call 签名的相似度；一旦检测到重复调用，必须由宿主硬性注入中断信号或 Steering 指令，强行跳出死循环。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚠️ 2. 上下文膨胀与污染隔离（Result Truncation）</div>
+      <p style="font-size: 14px; margin-bottom: 0;">工具执行结果（如抓取到的网页 HTML 或超大堆栈日志）可能高达数百 KB。如果直接完整推入 MessageQueue，会导致单轮迭代消耗数万 Tokens，甚至直接挤爆 Context Window。宿主层必须具备流式截断、头尾保留（Head-Tail Truncation）以及落盘分页机制。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🛡️ 3. 宿主主控权不移交（Host In Control）</div>
+      <p style="font-size: 14px; margin-bottom: 0;">无论模型多聪明，它永远只是系统的“策略建议者”。底层的系统权限隔离、工具调用的并发控制、环境读写权限审批，必须牢牢掌控在宿主容器手中。不可逆的高危操作（如删除库表、向外发送敏感数据）必须有宿主 Interceptor 拦截机制。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="takeaway">
+      <h3>今日 1 分钟架构底线（Takeaway）</h3>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary);">
+        <li><strong>主控权在宿主，不在模型</strong>：Agent 的外壳是确定性的事件循环状态机，LLM 只负责状态转移函数中的意图推断。不要期望模型自发控制节奏，节奏完全由宿主调度器掌控。</li>
+        <li><strong>生产级可靠性取决于防御性外壳</strong>：衡量一个 Agent 架构成熟度的标准，不是它的 Prompt 辞藻有多华丽，而是它的<strong>步数熔断、循环检测、上下文截断与异常自愈</strong>机制有多健壮。</li>
+      </ol>
+    </div>
+
+    <div class="card" style="margin-top: 18px; padding: 14px;">
+      <div class="card-title" style="color: var(--accent); font-size: 15px;">🎯 架构师课后微测验</div>
+      <p style="margin-bottom: 10px; font-weight: 500; color: var(--text-primary);">
+        <strong>思考题</strong>：在 Android 架构中，如果消息循环中某任务耗时过长，会引发系统级 ANR（Application Not Responding）；在 Agent 运行时中，如果 LLM 反复生成错误的工具参数导致工具连续抛异常，宿主运行时应该采取哪种优雅的降级处理，而不是简单地直接抛出异常崩溃退出？
+      </p>
+      <details style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+        <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 13px;">🔍 点击展开：架构解析与参考答案</summary>
+        <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+          <strong>参考架构实践：错误反馈闭环（Error Feedback Loop）与阶梯降级</strong><br>
+          1. <strong>错误转化为 Observation</strong>：宿主绝不能直接 crash 进程，而是将工具的标准错误（stderr/Exception stack）格式化为结构化的 Observation 消息，重新塞回 MessageQueue，让 LLM 看到自己调用失败的具体原因（利用自回归能力自我修复）。<br>
+          2. <strong>步数配额与干预（Steering）</strong>：设置重试配额（如连续失败 3 次）。达到阈值后，宿主主动注入一条系统级 Steering 提示：“该工具当前不可用，请更换排查策略或降级回答”。<br>
+          3. <strong>保底兜底（Safe Fallback）</strong>：达到最大步数上限后强制中断循环，向终端用户坦诚输出部分已完成事实与阻断瓶颈，保持系统的可预测性与健壮性。
+        </div>
+      </details>
+    </div>
+  </section>
+</body>
+</html>

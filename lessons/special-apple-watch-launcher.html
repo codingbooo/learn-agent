@@ -19,8 +19,6 @@
         textColor: isDark ? '#f8fafc' : '#0f172a',
         mainBkg: isDark ? '#1e293b' : '#ffffff',
         nodeBorder: isDark ? '#475569' : '#cbd5e1',
-        clusterBkg: isDark ? '#0f172a' : '#f8fafc',
-        clusterBorder: isDark ? '#334155' : '#cbd5e1',
         edgeLabelBackground: isDark ? '#1e293b' : '#ffffff'
       },
       securityLevel: 'loose',
@@ -36,7 +34,25 @@
   </header>
 
   <section>
-    <h2>一、架构分水岭：为什么常规 Android 方案必败？</h2>
+    <h2>一、实机运行效果与真实视觉还原</h2>
+    <p>以下为在真机上运行 <strong>WatchLauncher Pro v4.0</strong> 的实机渲染效果。我们采用超窄边框（5.5dp Bezel）与铺满式向心收缩场，在保留完整蜂巢紧凑张力的同时，彻底消除了外圈黑边：</p>
+
+    <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 20px 0;">
+      <div style="flex: 1; min-width: 280px; max-width: 380px; text-align: center; background: var(--bg-secondary); padding: 12px; border-radius: 12px; border: 1px solid var(--border);">
+        <img src="../assets/watch_launcher_center.png" alt="居中焦点态" style="width: 100%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <div style="margin-top: 10px; font-weight: 600; font-size: 14px; color: var(--text-primary);">图 1：中心聚焦态 (Central Focal State)</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">平坦核心区覆盖 68% 视口，小球紧致咬合，边缘平滑消隐无死球堆积</div>
+      </div>
+      <div style="flex: 1; min-width: 280px; max-width: 380px; text-align: center; background: var(--bg-secondary); padding: 12px; border-radius: 12px; border: 1px solid var(--border);">
+        <img src="../assets/watch_launcher_scrolled.png" alt="滚动滑动态" style="width: 100%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <div style="margin-top: 10px; font-weight: 600; font-size: 14px; color: var(--text-primary);">图 2：手势拖动滑向边缘 (Radial Compaction)</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">边缘圆心受强向心牵引内移，缝隙恒定在 6dp，呈现水滴表面张力</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>二、架构分水岭：为什么常规 Android 方案必败？</h2>
     <p>很多 Android 开发者初看 Apple Watch 蜂窝桌面（Springboard Honeycomb），第一反应是用 <code>RecyclerView</code>、自定义 <code>ViewGroup</code> 或在 Jetpack Compose 里摆放独立 Composable。但只要一上手，就会撞上三大工程死胡同：</p>
 
     <table>
@@ -73,28 +89,28 @@
   </section>
 
   <section>
-    <h2>二、核心图形管线与数据拓扑</h2>
+    <h2>三、核心图形管线与数据拓扑</h2>
     <p>从手指滑动的 2D 自由位移，到最终屏幕像素输出，管线经历严格的四阶几何变换：</p>
 
     <pre class="mermaid">
 flowchart TD
-    A[触摸手势 2D 向量输入<br>ScrollX, ScrollY] --> B[世界坐标拓扑<br>轴向六边形密堆积晶格 q, r]
-    B --> C[超椭圆 SDF 距离场分析<br>精确度量到表盘边界的跨度]
-    C --> D{空间力场三级分区判定}
+    A["触摸手势 2D 向量输入<br>(ScrollX, ScrollY)"] --> B["世界坐标拓扑<br>轴向六边形密堆积晶格 (q, r)"]
+    B --> C["超椭圆 SDF 距离场分析<br>精确度量到表盘边界的跨度"]
+    C --> D{"空间力场三级分区判定"}
     
-    D -->|d ≤ dInner| E[中心平坦区<br>Scale=1.0, 零向心位移]
-    D -->|dInner < d ≤ dBoundary| F[向心过渡区<br>圆心法向内缩 + 紧凑水滴张力]
-    D -->|d > dBoundary| G[消隐视界<br>Scale→0, 彻底截断不堆叠]
+    D -->|d &le; dInner| E["中心平坦区<br>Scale=1.0, 零向心位移"]
+    D -->|dInner &lt; d &le; dBoundary| F["向心过渡区<br>圆心法向内缩 + 紧凑水滴张力"]
+    D -->|d &gt; dBoundary| G["消隐视界<br>Scale 归零, 彻底截断不堆叠"]
     
-    E --> H[Canvas 即时绘制<br>单 View 硬件加速零 GC]
+    E --> H["Canvas 即时绘制<br>单 View 硬件加速零 GC"]
     F --> H
-    G --> I[缓存更新用于逆序 Hit-Test]
+    G --> I["缓存更新用于逆序 Hit-Test"]
     H --> I
     </pre>
   </section>
 
   <section>
-    <h2>三、视觉精髓：三大核心数学难题的破解</h2>
+    <h2>四、视觉精髓：三大核心数学难题的破解</h2>
 
     <div class="card">
       <div class="card-title">难题 1：六边形密堆积拓扑（Axial Hexagonal Packing）</div>
@@ -111,19 +127,8 @@ Y_world = D * (sqrt(3) / 2.0 * r)
       
       <pre class="mermaid">
 flowchart LR
-    subgraph 传统单轴缩小[常规开源方案：散落稀疏]
-        direction TB
-        A1[球 1 半径变小] -. 切向距离未拉近 .- A2[球 2 半径变小]
-        style A1 fill:#fee2e2,stroke:#ef4444
-        style A2 fill:#fee2e2,stroke:#ef4444
-    end
-
-    subgraph 本文向心场[超椭圆向心补偿：紧致咬合]
-        direction TB
-        B1[球 1 缩小 + 向心平移] == 保持 6dp 恒定表面张力 == B2[球 2 缩小 + 向心平移]
-        style B1 fill:#dcfce7,stroke:#22c55e
-        style B2 fill:#dcfce7,stroke:#22c55e
-    end
+    A1["球 1 半径变小<br>(常规方案)"] -.-|切向距离未拉近: 间距暴增至 50dp| A2["球 2 半径变小<br>(松散稀疏)"]
+    B1["球 1 缩小 + 法向向心平移<br>(本文方案)"] ===|恒定锁定 6.0dp 表面张力| B2["球 2 缩小 + 法向向心平移<br>(紧致咬合)"]
       </pre>
 
       <p><strong>解法</strong>：引入向心法向位移补偿。当小球半径缩减量为 $\Delta R = R_0 \cdot (1 - Scale)$ 时，圆心同步沿边界法线内缩：</p>
@@ -140,38 +145,26 @@ flowchart LR
   </section>
 
   <section>
-    <h2>四、2D 自由向量物理动力学状态机</h2>
+    <h2>五、2D 自由向量物理动力学状态机</h2>
     <p>手势滑动并不是机械的移动，而是具有惯性、阻尼与边界弹性的连续物理系统：</p>
 
     <pre class="mermaid">
 stateDiagram-v2
     [*] --> Idle: 静止态 (原点吸附)
     
-    Idle --> Dragging: ACTION_DOWN & 超过 TouchSlop
-    
-    state Dragging {
-        [*] --> InBounds: 凸包边界内 (1:1 跟手移动)
-        InBounds --> OverScroll: 拖出六边形总边界
-        OverScroll --> InBounds: 拖回合法区域
-        note right of OverScroll: 沿法向施加基于 Density 的双曲阻尼
-    }
+    Idle --> Dragging: 触摸拖动 (超过 TouchSlop)
+    Dragging --> Flinging: 松手飞滚 (速度达到初速度阈值)
+    Dragging --> SnapBack: 越界拖动后松手
+    Dragging --> Idle: 轻微移动后静止松手
 
-    Dragging --> Flinging: ACTION_UP (速度 ≥ MinFlingVelocity)
-    Dragging --> SnapBack: ACTION_UP (速度 < MinFlingVelocity 且越界)
-    Dragging --> Idle: ACTION_UP (微动静止)
-
-    state Flinging {
-        [*] --> MomentumDecay: 动量守恒平滑滑行 (初速度无阶跃)
-        MomentumDecay --> BoundaryCapture: 触发外围最大凸包
-    }
-
+    Flinging --> BoundaryCapture: 惯性滑行触发外围凸包
     BoundaryCapture --> SnapBack: 动量耗尽，弹性捕获
     SnapBack --> Idle: 二阶阻尼弹簧回弹归位
     </pre>
   </section>
 
   <section>
-    <h2>五、全套工程演进对比表</h2>
+    <h2>六、全套工程演进对比表</h2>
     <p>在打磨该方案的整个过程中，关键版本演化路线总结如下：</p>
 
     <table>

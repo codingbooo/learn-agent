@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>第 06 讲：任务规划与分层拆解架构 —— 从 Plan-and-Solve 到 Sub-agent 拓扑</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">篇章 2 · 运行时与控制流 · 第 06 讲</span>
+    <h1>任务规划与分层拆解架构 —— 从 Plan-and-Solve 到 Sub-agent 拓扑</h1>
+    <div class="subtitle">建议阅读时长：8~10 分钟 | 运行时控制流篇</div>
+  </header>
+
+  <section>
+    <h2>一、单步贪心困境：为什么单 Agent 跑长链路必然崩塌？</h2>
+    <p>在前两讲中，我们解析了基于 ReAct 循环的状态机以及工具调用的沙箱边界。很多团队在掌握工具调用后，会尝试构建一个拥有几十个工具的“全能 Agent”，直接丢给它一个复杂的工程目标（例如：“分析线上崩溃日志并自动提 PR 修复”）。</p>
+    <p>然而在现实工业场景中，当任务执行步数超过 6~8 步时，纯单步 ReAct 架构几乎百分之百会出现系统级失效。其本质是<strong>单步贪心搜索（Greedy Search）</strong>遭遇了概率模型的物理极限：</p>
+    <ul style="padding-left: 20px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 14px;">
+      <li><strong>上下文污染（Context Poisoning）</strong>：每一步工具调用的冗长原始返回（如大段日志、报错堆栈、HTML 源码）全部硬塞进单一上下文窗口，导致注意力矩阵被无关细节稀释，模型遗忘最初的全局目标；</li>
+      <li><strong>误差级联与死锁（Error Cascading）</strong>：中间某一步只要调用了错误工具或产生了误读，后续迭代就会在错误假设上“自圆其说”，迅速陷入死循环；</li>
+      <li><strong>单点吞吐瓶颈</strong>：所有步骤完全串行阻塞，无法发挥现代并行基础设施的并发能力。</li>
+    </ul>
+
+    <div class="analogy">
+      <div class="analogy-title">Android 架构师类比</div>
+      单 Agent 执行长任务，就像<strong>把一个大型下载、解压、数据库迁移的后台重度任务全部塞进 UI 主线程的一个同步方法里</strong>：<br>
+      1. <strong>主线程阻塞与崩溃</strong>：没有前置规划调度，主线程不断处理临时杂务，堆栈迅速膨胀引发 OutOfMemoryError 或严重卡顿；<br>
+      2. <strong>WorkManager 与 Task DAG</strong>：工业级做法必须像 <code>WorkManager</code> 那样，先由主调度器拆解出依赖图（<code>WorkContinuation.beginWith(TaskA).then(TaskB, TaskC)</code>），将任务编排成有向无环图（DAG）；<br>
+      3. <strong>独立多进程隔离</strong>：子任务派发到独立的后台进程（<code>:sync</code>）中运行。子进程享有完全隔离的 Linux 虚拟内存空间（独立的 Context Window），执行完毕后仅通过 Binder 将极简的执行结果 Bundle 回传主进程，主进程永远保持清爽与可控。
+    </div>
+  </section>
+
+  <section>
+    <h2>二、任务拓扑的三代演进</h2>
+    <p>为了让 Agent 具备解决长链路复杂工程问题的能力，控制流架构经历了从线性到分层的三次关键演进：</p>
+
+    <pre class="mermaid">
+flowchart TD
+    subgraph S1["1. 静态 Plan-and-Solve"]
+        P1["Planner 静态生成执行步骤列表"] --> E1["Executor 严格按序执行 Step 1 ~ N"]
+    end
+
+    subgraph S2["2. 动态 Re-planning"]
+        P2["Planner 生成初始步骤"] --> E2["Executor 执行单步并收集反馈"]
+        E2 --> C2{"检查执行偏差 / 异常?"}
+        C2 -->|"有偏差"| R2["Re-planner 动态修剪/增补 Plan"]
+        R2 --> E2
+        C2 -->|"正常结束"| F2["产出结果"]
+    end
+
+    subgraph S3["3. 分层 Sub-agent 拓扑 (Hierarchical Delegation)"]
+        Leader["Parent Agent (调度协调器)"] -->|派发子任务 + 边界上下文| SubA["Sub-agent A (检索/读日志)"]
+        Leader -->|派发子任务 + 边界上下文| SubB["Sub-agent B (编码/写补丁)"]
+        SubA -.->|"仅回传结构化摘要"| Leader
+        SubB -.->|"仅回传结构化摘要"| Leader
+        Leader --> Verifier["Reviewer / Verifier Agent (独立复核)"]
+    end
+    </pre>
+
+    <p>四种规划与控制流拓扑的架构维度对比：</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>控制流范式</th>
+          <th>规划时机</th>
+          <th>上下文隔离度</th>
+          <th>容错恢复能力</th>
+          <th>工程适用场景</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>纯 ReAct</strong></td>
+          <td>无显式规划，即时步进</td>
+          <td>无隔离（全量上下文平铺）</td>
+          <td>差，极易陷入局部死循环</td>
+          <td>简单单跳问答、3步以内的轻量工具调用</td>
+        </tr>
+        <tr>
+          <td><strong>Plan-and-Solve</strong></td>
+          <td>静态事前一次性生成 Plan</td>
+          <td>低（执行器单链复用）</td>
+          <td>中等，无法应对中间突发未知分支</td>
+          <td>确定性批处理工作流、数据提取管线</td>
+        </tr>
+        <tr>
+          <td><strong>动态 Re-planning</strong></td>
+          <td>事前规划 + 步后动态修剪</td>
+          <td>中等（需维护全局 Plan 状态）</td>
+          <td>较高，具备自我纠偏与重试能力</td>
+          <td>半探索性任务（如依赖诊断、漏洞复现）</td>
+        </tr>
+        <tr>
+          <td><strong>分层 Sub-agent</strong></td>
+          <td>分层委派 + 动态拓扑</td>
+          <td><strong>物理级强隔离（各拥有独立上下文）</strong></td>
+          <td><strong>最高，子任务失败不污染全局</strong></td>
+          <td>大型工程开发（如 Claude Code / Hermes 架构）</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>三、工业级 Sub-agent 架构设计三原则</h2>
+    <p>将单 Agent 拆分为分层 Sub-agent 体系后，系统的核心矛盾从“模型推理能力不足”转移到了“多分布式节点的状态治理与通信开销”。架构师必须坚守三道设计防线：</p>
+
+    <div class="card">
+      <div class="card-title">🛡️ 1. 上下文物理隔离与摘要向上汇聚（Context Isolation & Summary Rollup）</div>
+      <p style="font-size: 14px; margin-bottom: 0;"><strong>绝不能让父子 Agent 共享同一个长上下文！</strong>父 Agent 向子 Agent 发起委托（Delegate）时，只注入该子任务必需的输入边界（目标、约束条件、必要上下文切片）；子 Agent 执行过程中产生的数万 Token 中间输出（如抓取到的几百行网页文本、数千行源码）全部沉淀在其独立的生命周期中。任务结束时，子 Agent 必须经过提炼，仅向父 Agent 返回高信息密度的<strong>结构化执行摘要与确定性句柄（文件路径、Commit ID 等）</strong>。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🌲 2. 有界调度深度与防递归熔断（Bounded Tree Depth）</div>
+      <p style="font-size: 14px; margin-bottom: 0;">在没有严格架构约束的情况下，Agent 自主规划很容易演变成“子 Agent 又派发孙 Agent”的失控递归树。工业级调度框架必须强行设定调用深度阈值（通常设定 <code>Max Depth ≤ 2</code>，即 Parent → Sub-agent），超过深度强制降级为单步工具执行，严防因 Prompt 理解偏差引发 Token 与计算资源的无限裂变爆炸。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">💾 3. DAG 状态持久化与断点续跑（Checkpointing & Partial Retry）</div>
+      <p style="font-size: 14px; margin-bottom: 0;">长链任务执行耗时往往长达数分钟甚至数十分钟。任务编排系统必须在宿主持久层维护 TaskGraph 状态机（如每个子任务的状态：<code>PENDING / RUNNING / COMPLETED / FAILED</code>）。一旦网络波动、API 限流或子 Agent 崩溃，系统应仅针对失败的叶子节点进行有界指数退避重试（Partial Retry），而不是重置全盘从头再来。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="takeaway">
+      <h3>今日 1 分钟架构底线（Takeaway）</h3>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary);">
+        <li><strong>长链路终结单 Agent 幻想</strong>：超过 6 步的复杂业务，纯 ReAct 必然死于上下文稀释与误差级联。任务规划与分层拆解不是锦上添花，而是突破模型物理边界的必由之路。</li>
+        <li><strong>分层设计的核心是上下文沙箱</strong>：Sub-agent 的真正价值不在于“拟人化分工”，而在于<strong>为上下文窗口建立了进程级隔离边界</strong>。父 Agent 只看汇总摘要，绝不吞噬子代理的原始噪点。</li>
+      </ol>
+    </div>
+
+    <div class="card" style="margin-top: 18px; padding: 14px;">
+      <div class="card-title" style="color: var(--accent); font-size: 15px;">🎯 架构师课后微测验</div>
+      <p style="margin-bottom: 10px; font-weight: 500; color: var(--text-primary);">
+        <strong>思考题</strong>：假设你正在为团队设计一个“自动重构遗留代码”的 Agent 系统。如果采用“Leader 拆解任务 -> 3 个 Coder Agent 并发重构不同模块 -> 1 个 Reviewer 校验”的分层架构，该架构在什么情况下会发生严重的“逻辑断裂”甚至比单 Agent 效果更差？作为架构师，你该如何建立确定性约束？
+      </p>
+      <details style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+        <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 13px;">🔍 点击展开：架构解析与参考答案</summary>
+        <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+          <strong>参考架构实践：契约优先（Contract-First）与状态同步机制</strong><br>
+          1. <strong>崩溃根因：缺乏共享契约导致的跨模块接口不兼容</strong>。当 3 个 Coder 并行执行时，由于彼此上下文严格物理隔离，Coder A 可能单方面修改了 public 方法签名，而 Coder B 仍在按旧签名调用。并发导致严重的“架构盲目（Architectural Blindness）”。<br>
+          2. <strong>契约优先解法（Contract-First Design）</strong>：在派发并行 Coder 之前，Leader Agent 必须先执行“契约冻结”阶段——先生成不可变更的 API 抽象接口（如 TypeScript 类型定义、Java Interface 或 AIDL 文件）并固化为文件；<br>
+          3. <strong>依赖倒置与静态验证</strong>：所有并行 Coder Agent 只能依赖固化的接口契约进行实现，各子任务包含独立的单测执行。最后汇聚到 Reviewer 时，通过运行编译器/静态代码检查（如 <code>tsc</code> 或 <code>gradle assembleDebug</code>）提供确定性反馈门禁，彻底阻断幻觉扩散。
+        </div>
+      </details>
+    </div>
+  </section>
+</body>
+</html>

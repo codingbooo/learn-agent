@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>篇章 2 综合复习：运行时控制流与多代理调度决策</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">里程碑复习 · 篇章 2 综合</span>
+    <h1>篇章 2 综合复习：运行时控制流与多代理调度决策</h1>
+    <div class="subtitle">建议阅读时长：8~10 分钟 | 架构决策评估篇</div>
+  </header>
+
+  <section>
+    <h2>一、篇章 2 核心控制流速查矩阵</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>核心架构模块</th>
+          <th>工程物理本质</th>
+          <th>Android / 系统工程对标</th>
+          <th>架构师第一防御红线</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>04 运行循环与状态机</strong></td>
+          <td>ReAct Loop (Thought-Action-Observation) 事件循环</td>
+          <td><code>Looper.loop()</code> + 状态机拦截</td>
+          <td>最大迭代上限（Max Steps）、Token 溢出兜底熔断</td>
+        </tr>
+        <tr>
+          <td><strong>05 工具调用与安全沙箱</strong></td>
+          <td>结构化 RPC 契约 + 权限门禁与外部沙箱</td>
+          <td>AIDL / Binder IPC + 运行时权限弹窗 (HITL)</td>
+          <td>控制面与数据面分离，间接提示词注入物理隔离</td>
+        </tr>
+        <tr>
+          <td><strong>06 规划与分层委派</strong></td>
+          <td>Task DAG 拓扑编排 + 上下文物理隔离</td>
+          <td>WorkManager 任务链 + 多进程 <code>:sync</code> 隔离</td>
+          <td>有界树深（Max Depth &le; 2），禁止跨代理共享原始上下文</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>二、篇章 2 运行时拓扑全景图</h2>
+    <pre class="mermaid">
+flowchart TD
+    Task["🎯 复杂业务任务"] --> Router["Parent Agent (调度规划器)"]
+    Router --> Plan{"静态 DAG 还是动态委派?"}
+    
+    Plan -->|"分层委派"| Sub1["Sub-agent 1: 独立 Context 沙箱<br>(仅注入必要目标)"]
+    Plan -->|"分层委派"| Sub2["Sub-agent 2: 独立 Context 沙箱<br>(仅注入必要目标)"]
+    
+    Sub1 --> Gate1["安全网关 (RPC Schema 校验)"]
+    Sub2 --> Gate2["安全网关 (RPC Schema 校验)"]
+    
+    Gate1 --> Tool1["只读工具 (Auto)"]
+    Gate2 --> Tool2{"高危操作 (HITL 审批)"}
+    
+    Tool1 --> Sandbox1["Docker / WASM 隔离沙箱"]
+    Tool2 -->|"授权通过"| Sandbox2["外部系统执行"]
+    
+    Sandbox1 --> Rollup1["结果清洗与摘要压缩"]
+    Sandbox2 --> Rollup2["结果清洗与摘要压缩"]
+    
+    Rollup1 -.->|"仅回传精炼摘要 + 句柄"| Router
+    Rollup2 -.->|"仅回传精炼摘要 + 句柄"| Router
+    
+    Router --> Verifier["Reviewer 校验器 (编译器 / 门禁)"]
+    Verifier --> Done["🏁 确定性任务收敛"]
+    </pre>
+  </section>
+
+  <section>
+    <h2>三、实战架构评审题：长链路自动化系统的失控灾难</h2>
+    <div class="card">
+      <div class="card-title">🚨 场景评审：千万级代码仓自动化迁移 Agent</div>
+      <p><strong>业务背景</strong>：某团队设计了一个“Android 模块自动迁移 KMP（Kotlin Multiplatform）”的 Agent 系统。在实际运行第 15 分钟时，系统耗尽了 500 万 Token，产生死循环，并在 Git 仓库提交了包含大量编译报错的未完成代码。</p>
+      <p><strong>架构师调取执行轨迹后发现 3 处致命缺陷</strong>，请指出其背后的系统性成因：</p>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary); line-height: 1.8;">
+        <li><strong>单一上下文平铺</strong>：让一个单体 Agent 负责整个模块的源码扫描、依赖解析、代码转换与单测执行，所有 <code>git diff</code> 和 <code>gradle</code> 输出直接灌入上下文；</li>
+        <li><strong>工具权限裸奔</strong>：直接向 Agent 开放了带 <code>sudo</code> 权限的宿主 Shell 工具，且未对外部网络出站进行限制；</li>
+        <li><strong>贪心无契约并发</strong>：拆分子任务时，并发唤醒了 5 个 Coder 子代理各自修改紧密耦合的接口，没有先做契约冻结。</li>
+      </ol>
+    </div>
+
+    <details style="margin-top: 18px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+      <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 15px;">🔍 点击展开：架构师级根治重构方案</summary>
+      <div style="margin-top: 12px; font-size: 14px; color: var(--text-secondary); line-height: 1.7;">
+        <p><strong>重构方案 1（治理上下文稀释）</strong>：引入 <strong>Hierarchical Sub-agent 架构</strong>。主调度器只保存模块依赖图；源码检索与代码翻译分别在独立的子代理中运行，中间产物持久化到磁盘，只向父代理汇报 <code>TaskResult(status, modified_files)</code> 句柄。<strong>根除注意力稀释与 Token 爆炸</strong>。</p>
+        <p><strong>重构方案 2（建立特权沙箱边界）</strong>：Shell 执行环境迁移至隔离 Docker 容器，挂载只读工作区副本；破坏性命令（<code>git push</code>、外部网络访问）引入人在回路（HITL）审批和白名单路由。<strong>阻断供应链攻击与不可逆破坏</strong>。</p>
+        <p><strong>重构方案 3（契约优先与静态编译门禁）</strong>：在派发并发迁移任务前，主代理必须先定义并冻结公共 API 接口；子代理提交后，系统必须调用确定性构建工具（<code>./gradlew check</code>）进行自动化编译验证，编译失败触发局部带回退重试，而不是放任幻觉入库。</p>
+      </div>
+    </details>
+  </section>
+</body>
+</html>

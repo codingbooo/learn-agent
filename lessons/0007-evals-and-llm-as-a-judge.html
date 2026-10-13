@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>第 07 讲：Agent 评测体系与质量门禁 —— 从断言失效到 Evals 与 LLM-as-a-Judge</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">篇章 3 · 确定性工程 · 第 07 讲</span>
+    <h1>Agent 评测体系与质量门禁 —— 从断言失效到 Evals 与 LLM-as-a-Judge</h1>
+    <div class="subtitle">建议阅读时长：8~10 分钟 | 确定性工程篇</div>
+  </header>
+
+  <section>
+    <h2>一、传统断言失效：概率系统的“测试困境”</h2>
+    <p>在经典软件工程中，测试的核心基石是确定性断言：<code>assertEquals(expected, actual)</code>。只要输入恒定，内部逻辑执行后输出必然严格一致。</p>
+    <p>然而进入 Agent 时代，系统的核心计算单元是自回归概率模型。即使设置 Temperature 为 0，由于浮点精度微抖或上下文动态差异，模型每次输出的自然语言句式、代码变量名乃至调用工具的微观次序都可能发生漂移。团队通常会经历三个阶段的惨痛教训：</p>
+    <ul style="padding-left: 20px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 14px;">
+      <li><strong>肉眼抽检（Vibe Check）</strong>：开发者改完一段 System Prompt，在聊天窗口随意试了 3 个 Case，感觉效果不错便直接发布，随后在线上遭遇客诉雪崩；</li>
+      <li><strong>打地鼠效应（Whack-a-Mole）</strong>：为了修补线上某个特定 Bad Case，开发者在 Prompt 里硬编码补充规则，结果导致另外十个原本正常的场景发生隐蔽回归（Regression）；</li>
+      <li><strong>字符串硬匹配失效</strong>：尝试用正则校验模型输出，一旦模型换个同义词或微调换行符，测试流水线大面积误报飘红。</li>
+    </ul>
+
+    <div class="analogy">
+      <div class="analogy-title">Android 架构师类比</div>
+      给 Agent 写测试，就如同<strong>给多机型碎片化时代的 Android ROM 做系统级验收</strong>：<br>
+      1. <strong>无法用简单单元测试覆盖</strong>：你不可能用单个 <code>JUnit</code> 断言去验证一台第三方手机的触控动画是否“流畅跟手”；<br>
+      2. <strong>Android CTS（兼容性测试套件）</strong>：Google 解决机型碎片化的终极手段不是审查厂商驱动源码，而是建立 <strong>CTS 黑盒测试套件</strong>——只定义输入事件与最终状态验收边界，任何厂商 ROM 必须通过数十万条 CTS 测试用例才获准出厂；<br>
+      3. <strong>Evals 就是 Agent 领域的 CTS</strong>：在 Agent 工程中，Prompt、模型版本与工具定义都是可变的“驱动实现”，唯有标准化的 <strong>Evals 测试集</strong> 才是系统行为的不可变契约。
+    </div>
+  </section>
+
+  <section>
+    <h2>二、工业级三层评测金字塔（Eval Pyramid）</h2>
+    <p>成熟的 Agent 架构决不依赖单一的评测手段，而是构建从硬性物理校验到语义判定的三层金字塔：</p>
+
+    <pre class="mermaid">
+flowchart TD
+    subgraph Pyramid["Agent 评测金字塔 (Eval Pyramid)"]
+        L1["L1: 确定性硬规则断言 (Deterministic Assertions)<br>• Exit Code == 0 / 编译通过<br>• JSON Schema 严格校验<br>• AST 语法树结构匹配 / 正则提取"]
+        L2["L2: 语义模型裁判 (LLM-as-a-Judge)<br>• 结构化打分准则 (Scoring Rubrics)<br>• 对比评估 (Pairwise A/B Ranking)<br>• 事实一致性与幻觉检验 (G-Eval)"]
+        L3["L3: 任务级端到端基准 (End-to-End Task Benchmark)<br>• 沙箱环境执行验收 (如 SWE-bench 单元测试覆盖)<br>• 多步工具调用轨迹与收敛步数审计"]
+    end
+    
+    L1 -->|"极低延迟 / 毫秒级 CI 门禁"| Gate1["基础红线门禁"]
+    L2 -->|"秒级 / 批量离线抽样评测"| Gate2["能力与意图对齐"]
+    L3 -->|"分钟级 / 全量发布阻断流水线"| Gate3["业务交付标准"]
+    </pre>
+
+    <p>主流评测范式的工程特性对比：</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>评测维度</th>
+          <th>人工肉眼评估 (Vibe Check)</th>
+          <th>确定性硬断言 (L1)</th>
+          <th>模型裁判 LLM-as-a-Judge (L2)</th>
+          <th>端到端沙箱执行 (L3)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>自动化程度</strong></td>
+          <td>完全人工，无法沉淀</td>
+          <td>100% 自动，毫秒级</td>
+          <td>100% 自动，高并发批量</td>
+          <td>自动化（需沙箱与夹具环境）</td>
+        </tr>
+        <tr>
+          <td><strong>评估对象</strong></td>
+          <td>主观体验</td>
+          <td>语法、Schema、错误码</td>
+          <td>推理逻辑、完整度、语气与意图</td>
+          <td>代码可运行性、Bug 修复率</td>
+        </tr>
+        <tr>
+          <td><strong>抗泛化能力</strong></td>
+          <td>极低（容易遗漏）</td>
+          <td>差（无法理解语义等价）</td>
+          <td><strong>极强（理解同义改写与多步推导）</strong></td>
+          <td><strong>最高（黑盒物理结果说话）</strong></td>
+        </tr>
+        <tr>
+          <td><strong>流水线成本</strong></td>
+          <td>昂贵且无法规模化</td>
+          <td>几乎为 0（本地 CPU 计算）</td>
+          <td>需消耗评测模型 Token 预算</td>
+          <td>需容器调度与环境清理成本</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>三、LLM-as-a-Judge 的架构防线与校准</h2>
+    <p>让高阶模型（如 GPT-4 / Claude 3.5 Sonnet）来评判待测 Agent 的输出，已成为业界标配。但裁判模型本身同样是概率机，架构师必须消除其内生的认知偏差：</p>
+
+    <div class="card">
+      <div class="card-title">⚖️ 1. 结构化打分准则（Rubric-based Scoring）</div>
+      <p style="font-size: 14px; margin-bottom: 0;"><strong>绝不能让裁判模型泛泛地“打 1~10 分”！</strong>模型对笼统分数缺乏稳定尺度。必须提供极度详尽的打分量表（Rubrics）。例如评估代码解释：“1 分：存在事实性错误；3 分：逻辑正确但遗漏边界条件；5 分：完全正确且给出时间复杂度分析与防护建议”。打分输出必须强制包裹在 JSON Schema 中，且要求<strong>先输出推理证据（Chain-of-Thought），再输出量化分值</strong>。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔄 2. 位置偏差与配对乱序消解（Position Bias Mitigation）</div>
+      <p style="font-size: 14px; margin-bottom: 0;">在做 Pairwise（两两对比 A/B 测）时，裁判模型普遍存在严重的<strong>位置偏见（默认倾向于选择 Candidate 1 或 Candidate 2）</strong>。工业级评测框架必须执行双向对调评测：将样本 <code>(A, B)</code> 和 <code>(B, A)</code> 分别输入裁判，仅当两次裁决结论完全对称时才判定有效，不一致时标记为平局或分歧。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🚦 3. Eval-Driven Development（EDD 评测驱动开发）</div>
+      <p style="font-size: 14px; margin-bottom: 0;">如同传统重构遵循 TDD（测试驱动开发），在 Agent 开发中必须践行 <strong>EDD（Eval-Driven Development）</strong>：在修改任何 Prompt、升级基础模型或新增工具前，先向 Eval 数据集中沉淀至少 50~100 个历史 Bad Case 与 Golden 标准样本；将 Evals 接入 GitHub Actions / CI 流水线，任何 MR/PR 只有在综合评分与通过率不发生 Regression 的前提下，才允许合并上线。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="takeaway">
+      <h3>今日 1 分钟架构底线（Takeaway）</h3>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary);">
+        <li><strong>没有 Evals 的 Agent 是无法维护的玩具</strong>：纯靠肉眼试跑是工程灾难的起点。只有建立覆盖全面、自动跑批的 Evals 数据集，团队才敢放心迭代 Prompt 和切换底座模型。</li>
+        <li><strong>分层验收与硬指标兜底</strong>：金字塔底层用确定性断言（Schema、Lint、AST）阻断物理错误，中层用高阶模型裁判（Rubric + 消除偏差）对齐语义，顶层用真实执行（沙箱回归）衡量端到端任务达成。</li>
+      </ol>
+    </div>
+
+    <div class="card" style="margin-top: 18px; padding: 14px;">
+      <div class="card-title" style="color: var(--accent); font-size: 15px;">🎯 架构师课后微测验</div>
+      <p style="margin-bottom: 10px; font-weight: 500; color: var(--text-primary);">
+        <strong>思考题</strong>：你的团队准备将线上生产环境的核心 Agent 底座从昂贵的“超大闭源模型”降级切换为低成本的“自部署开源开源蒸馏模型”。为了确保线上质量不下滑，负责的工程师提议：“我们写一个脚本，把两千条线上日志分别跑一遍，如果两者文本相似度（如 BLEU 或 Embedding 距离）达到 90% 以上就可以切流”。这种验收方案存在什么致命架构漏洞？作为架构师应如何设计正确的迁移验收流水线？
+      </p>
+      <details style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+        <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 13px;">🔍 点击展开：架构解析与参考答案</summary>
+        <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+          <strong>参考架构实践：从“表面文本相似”到“状态机与行为达成（Goal Completion）”验证</strong><br>
+          1. <strong>文本相似度度量的致命缺陷</strong>：高文本相似度完全不等于逻辑等价。例如对于一段支付 SQL，只要表名、字段名或 <code>WHERE status = 1</code> 漏写一个条件，BLEU 相似度依然高达 98%，但在生产环境中会直接酿成灾难性线上资损；反之，模型给出更优雅但完全不同的解法，文本相似度可能极低却完全正确。<br>
+          2. <strong>正确的模型迁移验收体系（Golden Dataset + Evals）</strong>：<br>
+          • <strong>工具调用行为保真度（Action Matching）</strong>：校验小模型在面对复杂意图时，生成的 <code>tool_calls</code> 名称、参数 Schema 准确率是否与大模型基线一致；<br>
+          • <strong>沙箱端到端执行结果比对（Execution-based Evals）</strong>：在隔离沙箱中执行 Agent 操作，直接断言其对环境产生的状态变更（如数据库变更行数、最终输出文件的哈希或单测结果）；<br>
+          • <strong>Rubric-based LLM-as-a-Judge 盲测（Double-Blind Evaluation）</strong>：用超大模型作为第三方裁判，打乱顺序盲审小模型与大模型的输出，统计 Win/Tie/Loss 胜率，确认在核心业务维度上没有显著退化。
+        </div>
+      </details>
+    </div>
+  </section>
+</body>
+</html>

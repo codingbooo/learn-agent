@@ -1,0 +1,4 @@
+# 0009: 结构化输出与受限解码 —— 从 JSON 修复重试到 Logit 掩码数学级确定性收敛
+- **Core Concept**: 大模型是基于自回归 Next-Token 预测的概率机，依赖 Prompt 强求格式（"MUST be valid JSON"）或事后重试修复（Retry Loop），存在长尾破损、P99 延迟暴增与 Token 浪费缺陷。工业级解决方案是语法受限解码（Grammar-Constrained Decoding / Structured Outputs）：将 JSON Schema / Pydantic 模型提前编译为有限状态机（FSM/DFA）或上下文无关文法（CFG），在自回归采样的 Logit 阶段动态施加掩码（Logit Masking），把不合法的 Token 概率置为 -inf，从而在数学上 100% 保证生成结果符合语法规范，消除重试，极大稳定生产系统吞吐与延迟。
+- **Android Analogy**: Android 进程间通信的 AIDL / Parcelable / Protocol Buffers 机制。Android 跨进程调用从不靠两个 Service 互相发送不可信的纯文本并在运行时用 `JSONObject` 解析重试，而是由 AIDL 编译器在编译期固化强类型 Proxy/Stub 编解码管道。受限解码就是大模型运行时的 AIDL 编解码拦截器。
+- **ZPD Insight**: 学员已完整掌握篇章 3 的确定性工程三大支柱（Evals 评测门禁、Guardrails 运行时护栏、Structured Outputs 受限解码），篇章 3 已完成闭环。接下来可进入篇章 3 阶段里程碑复习，或推进篇章 4：Vibe Coding 工程范式与 Agentic 研发协作架构（Spec-Driven Development、Codebase 上下文索引与自动化补丁闭环）。

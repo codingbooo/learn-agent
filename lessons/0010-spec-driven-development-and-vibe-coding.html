@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>第 10 讲：规格驱动开发（Spec-Driven Development） —— 终结随意编码的 Vibe Coding 架构工程</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">篇章 4 · Vibe Coding 工程范式 · 第 10 讲</span>
+    <h1>规格驱动开发（Spec-Driven Development） —— 终结随意编码的 Vibe Coding 架构工程</h1>
+    <div class="subtitle">建议阅读时长：8~10 分钟 | 研发架构进化篇</div>
+  </header>
+
+  <section>
+    <h2>一、自然语言编程的幻觉：从 Prompt-and-Pray 到架构崩塌</h2>
+    <p>近年来，“Vibe Coding”被大众广泛解读为“完全靠感觉和自然语言对话写代码”。开发者在 IDE 侧边栏对大模型随手输入一段模糊需求：<code>“帮我写一个用户会员结算模块”</code>，模型便迅速吐出几百行代码。</p>
+    <p>这种纯靠直觉的 Prompt-and-Pray 模式在独立玩具项目或百行脚本中令人惊叹，但一旦进入百万行级企业代码库，就会迅速引发灾难性的<strong>“架构熵增雪崩”</strong>：</p>
+    <ul style="padding-left: 20px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 14px;">
+      <li><strong>架构规范漂移（Architecture Drift）</strong>：系统本采用严苛的单向数据流 MVI 架构，Agent 却在生成的代码中随意引入全局 EventBus、单例回调或混用旧版三方库；</li>
+      <li><strong>隐性边界缺失（Implicit Blind Spots）</strong>：自然语言充满歧义与漏洞。模型自作主张忽略了网络断连重试、并发幂等校验、敏感信息脱敏与内存泄露防护；</li>
+      <li><strong>打地鼠式改动（Context Fragmentation）</strong>：修完 A 模块的 Bug，Agent 顺手重构了公共接口，导致依赖它的 B 和 C 模块产生大面积隐蔽编译崩溃。</li>
+    </ul>
+    <p><strong>大模型极擅长补全语法实现，但极不擅长在无约束状态下“猜透系统隐性契约”。</strong>真正的现代 Vibe Coding，绝非散漫的聊天，而是高度结构化的<strong>规格驱动开发（Spec-Driven Development, SDD）</strong>。</p>
+
+    <div class="analogy">
+      <div class="analogy-title">Android 架构师类比</div>
+      给 Agent 随意派发聊天指令，就如同<strong>在大型 Android App 团队中，让实习生完全不看方案设计与接口定义，凭口头一句话直接去主工程里改 BaseActivity 和核心网络库</strong>。<br><br>
+      成熟的 Android 架构流程从来都是：<br>
+      1. <strong>技术方案评审（Technical Design Review）</strong>：在写第一行业务逻辑前，主架构师必须先产出详细方案设计文档（TDD），冻结模块依赖拓扑与线程调度契约；<br>
+      2. <strong>契约先行（Contract First）</strong>：通过 <code>AIDL</code> / <code>Protocol Buffers</code> 严格固化跨进程通信数据结构，通过 Kotlin <code>sealed interface</code> 固化 UI State 与 User Intent；<br>
+      3. <strong>SDD 体系下的角色跃迁</strong>：架构师的角色从“体力型码农（实现者）”升级为<strong>“系统规格审核官（Spec Author &amp; Gatekeeper）”</strong>；而 Agent 则充当<strong>“超高并发的 Junior 工程师与快速编译器”</strong>。代码不是随意长出来的，而是被 Spec 严格投影约束出来的！
+    </div>
+  </section>
+
+  <section>
+    <h2>二、工业级 SDD 四层规格栈架构（The 4-Layer Spec Stack）</h2>
+    <p>在企业级 Agentic 软件工程中，人类与 Agent 协作时，必须在代码生成前构筑由上至下的四层不可变规格栈（Spec Stack）：</p>
+
+    <pre class="mermaid">
+flowchart TD
+    subgraph SpecStack ["工业级 SDD 规格体系 (The 4-Layer Spec Stack)"]
+        L1["L1: 架构与不变量规格 (Architecture & Invariants)<br>• ADR 架构决策 (MVI架构 / 严禁主线程IO)<br>• 目录边界与包可见性约束"]
+        L2["L2: 类型与契约规格 (Type & Schema Contract)<br>• OpenAPI / Protobuf / Kotlin Data Class<br>• 输入边界校验与不可空类型声明"]
+        L3["L3: 状态与时序规格 (State Machine & Flow)<br>• 状态转换图 (Idle -> Loading -> Success/Error)<br>• 边界异常重试与回滚策略"]
+        L4["L4: 行为验收用例 (Acceptance Criteria / Gherkin)<br>• Given-When-Then 标准行为断言<br>• 失败边缘用例 (Corner Cases)"]
+    end
+    
+    Architect["人类架构师"] -->|"推演、评审并冻结"| SpecStack
+    SpecStack -->|"作为硬约束上下文注入"| CodingAgent["Coding Agent (如 Claude Code / Cursor)"]
+    CodingAgent -->|"零歧义生成目标代码"| Patch["代码增量补丁 (Git Diff)"]
+    Patch -->|"自动化编译器与单测门禁"| Verification{"Gradle / Lint / Evals 校验"}
+    Verification -->|"PASS"| GitCommit["确定性合入主分支"]
+    Verification -->|"FAIL"| AutoFix["带精准编译器诊断栈回流自愈"]
+    </pre>
+
+    <p>三种软件生产范式的系统性工程对比：</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>工程维度</th>
+          <th>自由聊天式编码 (Prompt &amp; Pray)</th>
+          <th>传统人工编码 (Manual TDD)</th>
+          <th>规格驱动开发 (Spec-Driven Agentic)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>输入形态</strong></td>
+          <td>模糊口头需求、零散问答</td>
+          <td>人工阅读 PRD，自行构思代码</td>
+          <td><strong>结构化 Markdown Spec + 强类型契约</strong></td>
+        </tr>
+        <tr>
+          <td><strong>架构一致性</strong></td>
+          <td>极差（严重依赖单次采样随机性）</td>
+          <td>高（依赖资深工程师自觉与 CR）</td>
+          <td><strong>极高（受 L1/L2 不变量与规则强约束）</strong></td>
+        </tr>
+        <tr>
+          <td><strong>长程重构成本</strong></td>
+          <td>高昂（多次迭代后代码腐化难测）</td>
+          <td>中等（重构工期长，体力劳动多）</td>
+          <td><strong>极低（修改 Spec 重新编译生成全量代码）</strong></td>
+        </tr>
+        <tr>
+          <td><strong>质量验证手段</strong></td>
+          <td>肉眼看运行效果（Vibe Check）</td>
+          <td>手写单元测试 + 自动化 CI</td>
+          <td><strong>自动化契约测试 + Lint + 编译器沙箱</strong></td>
+        </tr>
+        <tr>
+          <td><strong>架构师时间分配</strong></td>
+          <td>80% 帮 AI 擦屁股调试诡异 Bug</td>
+          <td>70% 手动敲模板代码与联调</td>
+          <td><strong>80% 专注于边界推演、架构决策与 Spec 审查</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>三、SDD 落地核心心智：将 Spec 视为可编译的“第一等公民”</h2>
+    <p>很多工程团队误以为写 Spec 会拖慢开发节奏。但在 Agent 时代，Spec 的物理性质已经发生了根本性改变：</p>
+
+    <div class="card">
+      <div class="card-title">📝 1. Spec 从“给人看的文档”转变为“给模型执行的 AST”</div>
+      <p style="font-size: 14px; margin-bottom: 0;">过去的技术方案文档往往写完就躺在 Wiki 里发霉，实现代码与文档逐渐脱节。在 SDD 中，Spec 是一套<strong>机器可读的工程中间表征（IR）</strong>。它通过项目根目录的 <code>.cursorrules</code>、<code>CLAUDE.md</code> 或分层 <code>specs/feature-xxx.md</code> 直接作为 Agent 运行时不可越过的 System Invariant 载入，模型生成逻辑时逐条将其当作编译约束。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔄 2. 先“对话生成 Spec”，再“冻结 Spec 生成代码”的两阶段架构</div>
+      <p style="font-size: 14px; margin-bottom: 0;"><strong>绝不要在同一个 Prompt 链路中让模型同时做“方案设计”和“写全部代码”！</strong><br>
+      • <strong>第一阶段（架构推演）</strong>：向 Agent 描述业务目标，要求其仅输出技术选型、接口定义、潜在异常点与用例清单（Spec Draft）。人类在此阶段重点审查边缘条件与架构选型；<br>
+      • <strong>第二阶段（确定性投射）</strong>：Spec 经人类确认并冻结后，以只读形式传入执行 Agent，触发并发代码实现与单元测试生成。两阶段分离将模型的幻觉率降低了一个数量级。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🛡️ 3. 编译器与单测形成的“确定性反馈闭环”（Loop with Proof）</div>
+      <p style="font-size: 14px; margin-bottom: 0;">传统写完代码需要人工肉眼核对。在 SDD 闭环中，人类编写的 Spec 明确定义了验收基准。Agent 输出 Patch 后，系统自动触发 <code>gradle test</code> / <code>eslint</code> / 静态类型推断。如果类型报错，Agent 仅凭编译器的错误堆栈在有限上下文内自愈修复，无需人类介入纠错。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="takeaway">
+      <h3>今日 1 分钟架构底线（Takeaway）</h3>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary);">
+        <li><strong>代码只是 Spec 的副产物</strong>：在 Agentic 时代，代码库的可维护性取决于 Spec 的严谨度。严谨的 Spec 可以随时一键重生成不同语言实现，但缺少 Spec 的代码堆叠就是技术债务的死胡同。</li>
+        <li><strong>先对齐认知边界，再启动代码发射</strong>：推行“推演 Spec &rarr; 冻结契约 &rarr; 代理编码 &rarr; 编译器门禁”的标准流水线，将架构师从繁重低效的聊天纠错中解脱出来，真正发挥高阶抽象决策价值。</li>
+      </ol>
+    </div>
+
+    <div class="card" style="margin-top: 18px; padding: 14px;">
+      <div class="card-title" style="color: var(--accent); font-size: 15px;">🎯 架构师课后微测验</div>
+      <p style="margin-bottom: 10px; font-weight: 500; color: var(--text-primary);">
+        <strong>思考题</strong>：某团队在 Android 项目中引入了 AI 编码助手，团队工程师习惯通过对话“指导”Agent 连续修改了 8 个核心 Presenter 文件。虽然本地看起来功能正常，但在后续合入主干后，由于隐藏的多线程竞态与全局上下文泄露，引发了严重的线上崩溃率上涨。如果你是该项目的主架构师，在引入 SDD（规格驱动开发）理念后，你会制定怎样的流水线规范与目录契约来彻底预防该问题？
+      </p>
+      <details style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+        <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 13px;">🔍 点击展开：架构解析与参考答案</summary>
+        <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+          <strong>参考架构实践：构筑三层 SDD 研发闭环门禁</strong><br>
+          1. <strong>定义不可侵犯的 ADR 规则文件（如项目根目录 <code>CLAUDE.md</code> / <code>.cursorrules</code>）</strong>：<br>
+          • 显式声明全局架构不变量：如“严禁在 ViewModel/Presenter 中直接引用 <code>Context</code>”、“所有异步调度必须绑定 <code>viewModelScope</code>，严禁裸起 <code>Thread</code> / <code>GlobalScope</code>”；<br>
+          • 显式定义模块依赖图与只读路径：核心公共基础设施目录设为 Agent 只读，防止 Agent 私自窜改底层基础接口；<br>
+          2. <strong>推行“两阶段 PR 审查”规范</strong>：<br>
+          • 阶段一（Spec PR）：任何 Feature 开发必须先提交一份包含接口契约、时序图与验收测试用例的 Markdown 规格文件，由资深架构师评审通过后方可打上 <code>spec-approved</code> 标签；<br>
+          • 阶段二（Implementation PR）：Agent 基于已通过的 Spec 单独生成代码变更，且必须附带针对该 Spec 验收标准的自动化测试；<br>
+          3. <strong>CI 物理流水线硬阻断</strong>：<br>
+          • 接入静态分析工具（如 Android Lint 针对内存泄露的自定义规则、Detekt 架构规则检查）；<br>
+          • 只要 Agent 生成的代码违反了预设的线程调度规则或存在 Context 泄露隐患，CI 编译期直接红牌阻断，阻止劣质生成物渗透进主干分支。
+        </div>
+      </details>
+    </div>
+  </section>
+</body>
+</html>

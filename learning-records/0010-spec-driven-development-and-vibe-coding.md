@@ -1,0 +1,4 @@
+# 0010: 规格驱动开发（Spec-Driven Development） —— 终结随意编码的 Vibe Coding 架构工程
+- **Core Concept**: 自由对话式 Vibe Coding（Prompt-and-Pray）在复杂企业代码库中会导致严重的架构规范漂移、隐性边界缺失与打地鼠式接口破坏。必须推行规格驱动开发（Spec-Driven Development, SDD）：将 Spec 作为机器可读的工程中间表征（IR），构建由架构不变量（L1）、强类型契约（L2）、状态机时序（L3）与行为验收用例（L4）构成的四层不可变规格栈。开发流程拆分为“方案推演 &rarr; 冻结 Spec &rarr; 代理编码 &rarr; 编译器/单测验证闭环”，使代码成为严谨 Spec 的确定性副产物。
+- **Android Analogy**: 大型 Android 项目的技术方案评审（TDD / Technical Design Review）与 AIDL / Protocol Buffers 契约先行。架构师的核心职责不是手动写 Activity 业务填空，而是定义接口契约、单向数据流与线程调度不变量，评审通过后交由 Junior 工程师实现。在 SDD 中，架构师角色升级为 Spec 制定与审核官，Agent 成为高并发编译器。
+- **ZPD Insight**: 学员已掌握 Vibe Coding 时代的顶层工程范式（SDD / 规格驱动开发），开启篇章 4。下一步可深入探讨 Codebase 级上下文索引架构（AST 语法分析、RepoMap、向量与符号图检索在百万行代码仓中的精准路由机制）。

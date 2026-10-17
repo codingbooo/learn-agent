@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>第 11 讲：代码库智能索引与上下文路由 —— 从 RepoMap、AST 符号图到百万行代码精准定位</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">篇章 4 · Vibe Coding 工程范式 · 第 11 讲</span>
+    <h1>代码库智能索引与上下文路由 —— 从 RepoMap、AST 符号图到百万行代码精准定位</h1>
+    <div class="subtitle">建议阅读时长：8~10 分钟 | 架构检索与路由篇</div>
+  </header>
+
+  <section>
+    <h2>一、工业级代码库的物理困境：为什么全量上下文是伪命题？</h2>
+    <p>上一讲我们明确了<strong>规格驱动开发（SDD）</strong>的契约先行思想。然而，当工程师把 Agent 放入真实的大型工程（如拥有数千个类文件、几十万行代码的 Android 单体工程或分布式微服务）时，立刻会撞上一堵坚硬的物理墙：<strong>上下文窗口预算与信噪比衰减</strong>。</p>
+    <p>虽然现代大模型宣称拥有 1M 甚至 2M 的上下文窗口，但在代码工程中直接倾倒代码库存在三大致命陷阱：</p>
+    <ul style="padding-left: 20px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 14px;">
+      <li><strong>注意力稀释与“中途迷失”（Lost in the Middle）</strong>：输入 Token 超过数十万后，大模型对跨文件微小依赖、重载签名与深层调用链路的关注度急剧下降，幻觉率呈指数级上升；</li>
+      <li><strong>天价延迟与金钱成本</strong>：每次迭代请求若吞吐数十万 Token，单次交互耗时将飙升至几十秒甚至数分钟，彻底摧毁开发者的心流与交互式编码体验；</li>
+      <li><strong>信息噪音破坏语法不变量</strong>：海量的业务实现细节会掩盖系统的核心接口契约，导致模型在生成 Patch 时篡改未受保护的旁路逻辑。</li>
+    </ul>
+    <p>因此，先进编码工具（如 Aider、Cursor、Claude Code）的核心竞争力，<strong>并不在于能读多长的 Prompt，而在于其底层“上下文引擎（Context Engine）”能否从百万行代码中，精准提炼出那 1%~2% 的关键拓扑送入大模型</strong>。</p>
+
+    <div class="analogy">
+      <div class="analogy-title">Android 架构师类比</div>
+      面对庞大的代码工程，如果要求开发者每次写代码前把整个工程所有类的源码从头到尾默背一遍，系统立刻会 OOM（内存溢出）。<br><br>
+      Android 生态中的经典工程架构给出了同样的解题思路：<br>
+      1. <strong>Android Studio / IntelliJ 的 PSI 与 Stub Index</strong>：IDE 导入工程时，绝不会把每个文件的完整源码长驻内存，而是通过语法解析建立 <code>Stub Index</code>。开发者按住 <code>Ctrl + 鼠标点击</code> 跳转时，IDE 依靠的是紧凑的符号声明索引，而非全文正则搜索；<br>
+      2. <strong>R8 / ProGuard 的 Shrinking 拓扑图</strong>：构建工具在混淆与 Tree Shaking 时，先从 EntryPoint（Activity / Application）出发建立完整的 <code>Call Graph（方法调用有向图）</code>，分析死代码与调用链路；<br>
+      3. <strong>Agent 的 Codebase 索引本质</strong>：就是给 LLM 充当一套动态剪枝的“轻量级 PSI 符号表与 R8 调用图解析器”，让模型在只消耗数千 Token 的极低成本下，洞悉全局代码拓扑！
+    </div>
+  </section>
+
+  <section>
+    <h2>二、从 RepoMap 到混合路由：代码上下文引擎拓扑</h2>
+    <p>工业级代码索引不能使用简单的“纯文本拆切分块（Text Chunking）”。代码具有强烈的层级结构（AST）与调用依赖（Graph）。现代代码上下文引擎通常采用<strong>“语法降维 + 拓扑加权 + 多级混合路由”</strong>的架构：</p>
+
+    <pre class="mermaid">
+flowchart TD
+    subgraph IndexPipeline ["代码库多级静态分析链路 (Offline / Incremental)"]
+        RawCode["百万行代码库 (Multi-module Codebase)"] --> TreeSitter["Tree-sitter AST 语法解析器"]
+        TreeSitter --> AST["剥离函数体实现，保留类/函数声明与导出签名"]
+        AST --> DepGraph["构建符号拓扑图 (Call Graph & Dependency Graph)"]
+        DepGraph --> PageRank["PageRank 拓扑加权 (计算高频核心枢纽与公共接口)"]
+        PageRank --> RepoMap["生成紧凑代码拓扑地图 (RepoMap: 仅占 1%~2% Token)"]
+    end
+    
+    subgraph RuntimeRouting ["运行时任务驱动检索与路由 (Context Router)"]
+        TaskPrompt["用户开发任务 / 架构规格 (Spec)"] --> Router{"多级上下文路由器"}
+        RepoMap -.->|"全局拓扑注入"| Router
+        Router -->|"精确符号定位"| Lexical["BM25 / 精确标识符索引"]
+        Router -->|"模糊语义探索"| Semantic["向量语义检索 (Code Embedding)"]
+        Router -->|"依赖链溯源"| GraphSearch["图遍历追溯 (Caller / Callee 向上向下追溯)"]
+        Lexical --> Assembler["动态上下文装配器 (Context Assembler)"]
+        Semantic --> Assembler
+        GraphSearch --> Assembler
+    end
+    
+    Assembler --> HighValueContext["极简高保真 Context (全局骨架 + 目标实现源码)"]
+    HighValueContext --> Agent["Coding Agent (零幻觉生成精准 Patch)"]
+    </pre>
+
+    <p>三大核心检索范式在代码场景下的工程对比：</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>技术架构</th>
+          <th>全文字符串匹配 (Ripgrep / Grep)</th>
+          <th>朴素文档向量检索 (Naive Embedding RAG)</th>
+          <th>代码拓扑图索引 (AST + RepoMap + 混合路由)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>索引粒度</strong></td>
+          <td>无索引，逐行正则扫描</td>
+          <td>固定字符切块（如 500 Token Chunk）</td>
+          <td><strong>AST 语法节点（Class / Method / Field）</strong></td>
+        </tr>
+        <tr>
+          <td><strong>拓扑依赖感知</strong></td>
+          <td>零感知（完全不知道继承与调用链）</td>
+          <td>极弱（容易把方法声明与上下文切断）</td>
+          <td><strong>强感知（基于有向图与 PageRank 依赖打分）</strong></td>
+        </tr>
+        <tr>
+          <td><strong>上下文 Token 效率</strong></td>
+          <td>极差（搜索结果包含大量无效字符）</td>
+          <td>中等（大量重复的无关实现切块）</td>
+          <td><strong>极高（仅提取签名骨架，压缩比高达 90%~98%）</strong></td>
+        </tr>
+        <tr>
+          <td><strong>典型失效场景</strong></td>
+          <td>变量改名、多态调用、同名不同包</td>
+          <td>相似方法混淆、代码逻辑断裂、幻觉拼接</td>
+          <td>极端动态反射与运行时元编程（需动态补丁）</td>
+        </tr>
+        <tr>
+          <td><strong>工程适用层级</strong></td>
+          <td>终端命令行临时轻量探测</td>
+          <td>长文本技术文档 / PRD 检索</td>
+          <td><strong>大型企业级工程主力编码 Agent</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>三、RepoMap 核心算法剖析：如何用 1% 的体积表达全仓骨架？</h2>
+    <p>在业界优秀的开源 Agent（如 Aider）中，最令人称道的创新是 <strong>RepoMap（代码库地图）</strong>。它的运作机制揭示了代码上下文压缩的底层数学原理：</p>
+
+    <div class="card">
+      <div class="card-title">🌲 1. AST 骨架提取（Skeletonization via Tree-sitter）</div>
+      <p style="font-size: 14px; margin-bottom: 0;">
+        利用高效的底层解析器（如 Tree-sitter），将每个源文件中的具体执行逻辑全部剔除，仅保留：<code>包声明、导入项、类名、继承接口、公共方法签名、关键字段定义与 docstring 摘要</code>。一个拥有 1000 行繁复逻辑的业务类，其 AST 骨架往往只有 30~50 行，体积瞬间压缩 95% 以上。
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📈 2. 符号有向图与 PageRank 权重调度</div>
+      <p style="font-size: 14px; margin-bottom: 0;">
+        如果代码库有数万个类，即使只保留骨架依然会撑爆 Context。如何决定哪部分骨架进入模型？<br>
+        • 将每个方法、类视为图的节点，调用与继承关系视为有向边；<br>
+        • 引入类似 Google 网页排名的 <strong>PageRank 算法</strong>：被越多元组件依赖的基类、公共接口和核心实体，权重（Centrality）越高；<br>
+        • 当上下文窗口受限时，优先将高 PageRank 值的核心中枢骨架填入 Context，确保 Agent 绝不违反全局最关键的基础架构规范。
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🎯 3. 动态相关度偏置（Personalized PageRank）</div>
+      <p style="font-size: 14px; margin-bottom: 0;">
+        当用户输入具体任务（如：“修改购物车结算时的优惠券校验逻辑”）时，路由器先定位到 <code>CouponService</code> 和 <code>CheckoutActivity</code>。系统会以这些种子节点作为高斯热源，运行 <strong>个性化 PageRank（Personalized PageRank）</strong>：沿依赖边向外辐射，动态拉取与其直接相邻的 5~8 个关联文件的骨架与接口契约，实现精准“按需加载”。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="takeaway">
+      <h3>今日 1 分钟架构底线（Takeaway）</h3>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary);">
+        <li><strong>代码的灵魂在于拓扑，而非字符本身</strong>：在大型代码库中，绝不能将代码当成自然语言进行粗暴的切块与 Embedding。基于 AST 的符号提取与基于引用关系的拓扑图，是 Agent 理解复杂系统的基石。</li>
+        <li><strong>骨架提供全局视野，源码专注局部施工</strong>：优秀的上下文路由机制永远遵循“二八定律”——给 Agent 注入全局高权重的 RepoMap 骨架以防架构越界，同时仅向其提供发生变更目标文件的完整源码以供精准修改。</li>
+      </ol>
+    </div>
+
+    <div class="card" style="margin-top: 18px; padding: 14px;">
+      <div class="card-title" style="color: var(--accent); font-size: 15px;">🎯 架构师课后微测验</div>
+      <p style="margin-bottom: 10px; font-weight: 500; color: var(--text-primary);">
+        <strong>思考题</strong>：某金融级 Android App 拥有超过 200 个 Gradle 业务子模块，底层大量依赖 Dagger / Hilt 依赖注入与组件化路由（ARouter / 自研 SPI 接口发现）。开发团队接入某开源 Coding Agent 时，发现 Agent 经常在试图修改业务模块时报错，声称“找不到接口的具体实现类”，或者错误地在 Activity 中直接 <code>new</code> 出了一个尚未初始化的单例。从代码索引与上下文路由的角度分析，为什么传统的静态 AST 分析在此处失效了？作为系统架构师，你该如何补充设计索引层？
+      </p>
+      <details style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+        <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 13px;">🔍 点击展开：架构解析与参考答案</summary>
+        <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+          <strong>失效根因分析：</strong><br>
+          1. <strong>语法静态图 vs 运行时依赖图脱节</strong>：纯 AST 语法分析（如 Tree-sitter）只能看到代码中的显式语法调用（如 <code>import</code>、类继承或静态方法调用）。而 Dagger/Hilt 和 ARouter 的本质是<strong>基于注解处理器（APT/KSP）在编译期生成代码，或在运行时通过反射 / SPI 动态绑定的“隐式依赖”</strong>；<br>
+          2. 静态分析工具看到的是一个抽象的 <code>@Inject lateinit var paymentService: IPaymentService</code>，由于找不到显式的实例化语句，静态依赖图出现断裂（Orphan Node），导致 Agent 误以为该接口无实现或试图手动 <code>new</code> 对象。<br><br>
+          <strong>架构师破局方案：构筑领域感知的“语义拓扑增强索引（Domain-Aware Graph Augmentation）”：</strong><br>
+          • <strong>扩展 KSP/APT 编译产物索引</strong>：将构建工具生成的符号表（如 Hilt 生成的 <code>_Factory</code>、<code>_MembersInjector</code> 以及路由映射表 <code>ARouter$$Group$$xxx</code>）纳入索引管道，或直接解析注解语义，在图数据库中人工补全“<code>@Inject &rarr; @Provides / @Binds</code>”的有向边；<br>
+          • <strong>注入特定架构范式 Prompt 说明</strong>：在项目的 <code>CLAUDE.md</code> 或 <code>.cursorrules</code> 中明确架构规范：“本项目全局采用 Hilt 依赖注入与组件化 SPI，严禁直接 new 核心服务；如需获取服务实例，必须通过 <code>@Inject</code> 或调用 <code>ServiceRegistry.getService(xxx)</code>”；<br>
+          • 这样便将原本隐藏在运行时的隐式拓扑，显式投影到了 Agent 的路由认知网络中。
+        </div>
+      </details>
+    </div>
+  </section>
+</body>
+</html>

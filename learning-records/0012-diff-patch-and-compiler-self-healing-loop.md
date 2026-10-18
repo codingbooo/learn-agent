@@ -1,0 +1,4 @@
+# 0012: 差异补丁与编译器自愈循环 —— 从 Unified Diff、AST 合并到构建门禁闭环
+- **Core Concept**: 全量文件覆写存在生成高延迟、Token 消耗大以及偷懒注释抹杀代码（Lazy Comments）的严重缺陷，而标准 Unified Diff 因自回归大模型对行号计算的脆弱性极易遭遇 Hunk 失败。现代代码 Agent 采用带空白归一化与 Levenshtein 模糊匹配的 Search/Replace 块或 AST 结构化语法补丁。进一步结合“修改 &rarr; 编译器门禁（javac/kotlinc/tsc） &rarr; 错误精准切片反馈 &rarr; Agent 自愈重试 &rarr; Git 事务原子提交/回滚”，构建起物理级的确定性研发闭环。
+- **Android Analogy**: Android 热修复演进（从全量 Class 替换到 Sophix/Tinker 基于 DexDiff 算法的细粒度 Patch 运行时热缝合）与 Android Gradle Plugin (AGP) 增量构建机制。修改单一逻辑无需重编译重构全仓，依托细粒度补丁与增量编译门禁实现秒级确定性验证。
+- **ZPD Insight**: 学员已掌握 Vibe Coding 研发体系完整闭环（篇章 4：SDD 规格契约、RepoMap 上下文路由、差异补丁与编译器自愈循环），至此篇章 4 全部结课。后续可开启阶段复习或迈向篇章 5：多代理协同网络与企业级基础设施架构（Agentic Workflows & Multi-Agent Swarms）。

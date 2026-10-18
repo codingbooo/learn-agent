@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>篇章 4 综合复习：Vibe Coding 工程范式与研发架构决策</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">里程碑复习 · 篇章 4 综合</span>
+    <h1>篇章 4 综合复习：Vibe Coding 工程范式与研发架构决策</h1>
+    <div class="subtitle">建议阅读时长：8~10 分钟 | 软件工程范式进阶篇</div>
+  </header>
+
+  <section>
+    <h2>一、篇章 4 核心工程机制速查矩阵</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>核心架构模块</th>
+          <th>工程物理本质</th>
+          <th>Android / 系统工程对标</th>
+          <th>架构师第一防御红线</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>10 规格驱动开发 (SDD)</strong></td>
+          <td>四层不可变规格栈（架构不变量、强类型契约、状态时序、行为验收）冻结先行</td>
+          <td>大型架构设计评审 (Design Review) + AIDL / Protobuf 接口契约先行</td>
+          <td>拒绝自由对话式随缘编码（Prompt-and-Pray），Spec 必须先于代码冻结</td>
+        </tr>
+        <tr>
+          <td><strong>11 代码库索引与路由</strong></td>
+          <td>AST 语法降维（剥离函数体）+ PageRank 拓扑加权 RepoMap + 多级混合路由</td>
+          <td>Android Studio PSI/Stub Index 符号跳转 + R8/ProGuard Call Graph 拓扑分析</td>
+          <td>拒绝向上下文全量倒灌代码，以 1%~2% Token 注入全局高保真拓扑骨架</td>
+        </tr>
+        <tr>
+          <td><strong>12 差异补丁与自愈循环</strong></td>
+          <td>模糊匹配 Search/Replace 块 + 编译器绝对确定性门禁（stderr 诊断）+ Git 事务隔离</td>
+          <td>Android 热修复 DexDiff (Tinker/Sophix) + AGP 增量编译与字节码 Transform</td>
+          <td>彻底废弃全量覆写与纯行号 Unified Diff，以最小错误切片驱动闭环自愈</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>二、篇章 4 Vibe Coding 工业级研发流水线全景拓扑图</h2>
+    <pre class="mermaid">
+flowchart TD
+    subgraph SpecPhase ["阶段 1：规格契约工程 (Spec-Driven Stage)"]
+        UserReq["用户/业务需求目标"] --> SpecDesigner["架构师 / Spec 设计 Agent"]
+        SpecDesigner --> FrozenSpec["不可变 Spec 契约 (四层规格栈: L1不变量 + L2类型 + L3状态 + L4验收)"]
+    end
+
+    subgraph IndexPhase ["阶段 2：上下文路由引擎 (Context Engine)"]
+        FrozenSpec --> ContextRouter{"多级上下文路由器"}
+        RepoMap["代码库紧凑拓扑 (RepoMap: AST 骨架 + PageRank 权重)"] -.-> ContextRouter
+        Codebase["百万行代码工程"] --> ASTIndex["Tree-sitter AST / 符号索引库"]
+        ASTIndex -.-> ContextRouter
+        ContextRouter --> TargetHunk["极简高保真 Context (全局接口骨架 + 目标实现源码)"]
+    end
+
+    subgraph AgentPhase ["阶段 3：编码与补丁应用 (Patch Engine)"]
+        TargetHunk --> CodingAgent["Coding Agent (施工实施)"]
+        CodingAgent --> DiffBlock["高容错 Search/Replace 补丁块"]
+        DiffBlock --> PatchMatcher{"模糊滑动匹配应用引擎"}
+        PatchMatcher --> ApplyCode["原子写入工作区 (Workspace)"]
+    end
+
+    subgraph VerificationLoop ["阶段 4：编译器与契约门禁闭环 (Self-Healing Loop)"]
+        ApplyCode --> CompilerGate["编译器 / Linter 门禁 (kotlinc / javac / tsc)"]
+        CompilerGate -->|"编译报错 (stderr 符号定位)"| ErrorCutter["错误日志解析与精准切片 (Error Hunk)"]
+        ErrorCutter -->|"反馈自愈 Prompt (最多 3 次)"| CodingAgent
+        CompilerGate -->|"编译通过"| UnitTests["执行 Spec L4 验收用例 (Unit / Contract Tests)"]
+        UnitTests -->|"测试不通过"| TestFeedback["测试失败断言切片反哺"]
+        TestFeedback --> CodingAgent
+    end
+
+    subgraph ReleasePhase ["阶段 5：Git 事务落盘 (Atomic Transaction)"]
+        UnitTests -->|"全部验收通过"| GitCommit["Git 原子提交 (feat: verified code)"]
+        VerificationLoop -->|"自愈超限 / 逻辑死循环"| Rollback["Git 干净事务回滚 (git reset --hard HEAD)"]
+    end
+    </pre>
+  </section>
+
+  <section>
+    <h2>三、实战架构评审题：万行旧工程引入 AI 编码导致的“架构腐化与幽灵 Bug”</h2>
+    <div class="card">
+      <div class="card-title">🚨 场景评审：千万级日活 App 团队的 Vibe Coding 翻车事故</div>
+      <p><strong>业务背景</strong>：某移动端团队为了提高人效，全员引入了最新款 AI 编程助手开展“自由 Vibe Coding”。两个月后团队发现交付速度不但没有提升，反而陷入崩溃：</p>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary); line-height: 1.8;">
+        <li><strong>隐蔽幽灵 Bug 激增</strong>：AI 在修改老旧复杂业务逻辑时，因为全量写盘或粗暴匹配，不经意删除了原函数中用于低端机保活与异常兼容的边缘分支（如 <code>try-catch</code> 特殊补丁），上线后 Crash 率剧增；</li>
+        <li><strong>架构分层彻底击穿</strong>：原本严格遵循 MVI 单向数据流与 Repository 模式的架构，被 AI 在 Activity / ViewModel 中随意滥用直接注入数据库 DAO、单例甚至网络 Client，代码腐化成“意大利面条”；</li>
+        <li><strong>长耗时构建拖垮开发心流</strong>：团队将每次代码修改都挂载在 CI 的完整全量构建流水线上（耗时 15 分钟），AI 遇到微小拼写错误反复自愈尝试，导致开发者电脑整天处于风扇狂转的卡顿等待中。</li>
+      </ol>
+      <p>请以资深系统架构师视角，结合篇章 4 所学的 <strong>SDD 规格栈、AST 索引与编译器分级自愈架构</strong>，给出成体系的底层治理方案。</p>
+    </div>
+
+    <details style="margin-top: 18px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+      <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 15px;">🔍 点击展开：架构师级治理重构方案</summary>
+      <div style="margin-top: 12px; font-size: 14px; color: var(--text-secondary); line-height: 1.7;">
+        <p><strong>治理方案 1（以 Spec 冻结架构不变量，阻断架构腐化）</strong>：<br>
+        • <strong>确立不可侵犯的 L1 架构不变量</strong>：在项目工程中确立架构守则并在 Agent 系统 Prompt 中建立强约束（例如：“ViewModel 严禁持有 Context，严禁直接引用 Room DAO；必须通过 UseCase 暴露的 Flow/LiveData 交互”）；<br>
+        • <strong>推行 ArchUnit / 自研静态架构规则门禁</strong>：在编译期通过字节码静态分析检测包依赖违规（如 Presentation 层引用 Data 层内部实现），一旦违规在 2 秒内直接阻断，从物理层面禁止“随缘调用”。</p>
+        
+        <p><strong>治理方案 2（细粒度 Search/Replace 补丁与关键防护注释）</strong>：<br>
+        • <strong>强制使用细粒度差异补丁引擎</strong>：严禁 AI 工具对超过 200 行的文件进行全量重写，一律采用基于 AST 或搜索块替换的差异合并；<br>
+        • <strong>关键防御性代码标记保护</strong>：对涉及厂商兼容性、保活反射的脆弱代码段包裹特殊注解（如 <code>@CriticalArchGuard("Do not modify without review")</code>），补丁引擎检测到试图修改该受保护区域时强制告警或阻断。</p>
+
+        <p><strong>治理方案 3（分级构建与增量快速反馈流水线）</strong>：<br>
+        • <strong>解耦自愈校验门禁</strong>：自愈循环绝对不能触发全量打包（15分钟），必须设计“分级加速金字塔”：<br>
+        &nbsp;&nbsp;1. <strong>L1 秒级门禁（0~2秒）</strong>：文件保存时仅触发单个源文件的语法检查（<code>ktlint</code> + 抽象语法树校验）；<br>
+        &nbsp;&nbsp;2. <strong>L2 模块级门禁（5~10秒）</strong>：基于 Gradle 增量编译任务（<code>compileDebugKotlin --dry-run / incremental</code>）仅编译修改所在的单个 subproject；<br>
+        &nbsp;&nbsp;3. <strong>L3 契约测试门禁（15~30秒）</strong>：仅运行该模块对应的 JVM 本地单元测试；<br>
+        • 只有当 L1~L3 快速自愈闭环全部通过并提交 Git 后，才交由后台异步 CI 执行全量集成打包，兼顾极限开发心流与系统级质量基线。</p>
+      </div>
+    </details>
+  </section>
+</body>
+</html>

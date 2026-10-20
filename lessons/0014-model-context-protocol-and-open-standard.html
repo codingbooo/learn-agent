@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>第 14 讲：模型上下文协议（Model Context Protocol, MCP）—— 解耦工具集成与多源数据管道的标准化架构</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">篇章 5 · 多智能体协同网络 · 第 14 讲</span>
+    <h1>模型上下文协议（Model Context Protocol, MCP）—— 解耦工具集成与多源数据管道的标准化架构</h1>
+    <div class="subtitle">建议阅读时长：8~10 分钟 | 开放标准与数据管道篇</div>
+  </header>
+
+  <section>
+    <h2>一、N × M 适配困境：为何 AI 工具集成急需工业级统一标准？</h2>
+    <p>在第 5 讲中，我们解析了单 Agent 的 Function Calling 运行时与沙箱边界。但在企业级落地与多智能体系统演进中，架构师迅速遭遇了典型的<strong>“烟囱式集成雪崩”</strong>：</p>
+    <p>行业内存在着数十种 Agent 宿主环境（Host/Client，如 Claude Desktop、Cursor、IDE 插件、企业私有 Agent 编排框架），同时存在成百上千种异构企业数据源与执行工具（GitHub、PostgreSQL、Jira、Slack、本地文件系统、Sentry 日志）。在缺乏协议规范的初期：</p>
+    <ul style="padding-left: 20px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 14px;">
+      <li><strong>N × M 适配开销</strong>：每个客户端都得针对每个工具手写专属的 JSON Schema 封装、参数校验、身份凭据管理与网络重试；</li>
+      <li><strong>凭证漫游与安全失控</strong>：每个 Agent 插件各自索要 GitHub Token 或数据库连接串，API Key 散落在各个前端进程，缺乏统一的安全授权审计网关；</li>
+      <li><strong>动态上下文装配断层</strong>：除了执行动作（Tools），大模型更需要按需获取“只读业务上下文”（如代码库文件、分支对比、实时日志）。以往只能靠工程代码死板拼接 Prompt，无法做到按需拉取。</li>
+    </ul>
+
+    <div class="analogy">
+      <div class="analogy-title">Android 架构师类比</div>
+      回想 Android 早期与硬件外设、跨进程数据共享的经典架构：<br><br>
+      1. <strong>从混乱私有文件到 ContentProvider 与 SAF (Storage Access Framework)</strong>：早期若每个 App 想读写日历、联系人、媒体库，必须直接操作底层的 SQLite 文件或私有路径，权限无法收口且格式极易冲突。Android 引入 <code>ContentProvider</code> 与标准 URI 体系（<code>content://...</code>），统一将所有异构数据源抽象为基于标准游标（Cursor）的增删改查；<br>
+      2. <strong>从专有硬件驱动到 HAL (硬件抽象层) + HIDL/AIDL</strong>：Android 系统上层 Framework 无需为高通、联发科、三星每个芯片单独定制代码，而是定义统一的 HAL 接口。硬件供应商只负责实现 HAL 服务；<br>
+      3. <strong>物理接口的终局：USB-C</strong>：从 Mini-USB、Micro-USB、专有圆形充电孔，终结于 Type-C 标准，统一了供电、数据传输、音频和视频通道。<br><br>
+      <strong>Anthropic 主导开源的 MCP（Model Context Protocol），本质就是 AI Agent 时代的 ContentProvider + USB-C 标准接口！</strong>
+    </div>
+  </section>
+
+  <section>
+    <h2>二、MCP 核心架构：三大原语与双通道传输模型</h2>
+    <p>MCP 采用经典的 Client-Server 架构，将能力提供方与消费方彻底解耦。整个协议围绕<strong>三大核心原语（Primitives）</strong>展开：</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>MCP 核心原语</th>
+          <th>协议语义与交互方向</th>
+          <th>是否有副作用</th>
+          <th>Android / 系统工程对标</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Resources (资源)</strong></td>
+          <td>以 URI 寻址的只读结构化/非结构化数据流（如 <code>postgres://users/schema</code> 或 <code>file:///repo/Main.kt</code>），支持 mimeType、动态订阅更新</td>
+          <td><strong>无副作用</strong> (Read-only)</td>
+          <td><code>ContentProvider.query()</code> / <code>content://</code> 统一资源定位与数据流游标</td>
+        </tr>
+        <tr>
+          <td><strong>Tools (工具)</strong></td>
+          <td>暴露带 JSON Schema 强类型参数的计算或业务函数，由 LLM 决定调用并传参，需宿主环境授权批准后由 Server 执行并返回结果</td>
+          <td><strong>有副作用</strong> (Read/Write/Execute)</td>
+          <td>AIDL / Binder 远程 Service 暴露的 RPC 方法调用（如 <code>CameraManager.openCamera()</code>）</td>
+        </tr>
+        <tr>
+          <td><strong>Prompts (提示词模板)</strong></td>
+          <td>由 Server 预置的工作流模板与动态上下文注入切面（如参数化 <code>code_review(pr_id)</code>），供用户在 UI 或 Host 端直接触发调用</td>
+          <td>无副作用 (交互引导)</td>
+          <td>带有明确 Action/Extra 参数的标准化显式 <code>Intent</code> / 快捷方式 (App Shortcuts)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p style="margin-top: 16px;">在传输层（Transport Layer），MCP 统一定义在 <strong>JSON-RPC 2.0</strong> 强类型协议之上，官方标准化了两种低延迟通信通道：</p>
+    <ul style="padding-left: 20px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 14px;">
+      <li><strong>标准输入输出传输（stdio Transport）</strong>：MCP Client 与 MCP Server 运行在同一台主机，以父子进程方式通过 <code>stdin/stdout</code> 管道通信。<strong>零网络开销，天然继承宿主操作系统的进程级权限隔离与沙箱边界</strong>，最适合本地 CLI、桌面客户端（如 Claude Desktop）与 IDE 插件；</li>
+      <li><strong>Server-Sent Events 传输（SSE + HTTP POST Transport）</strong>：适用于跨网络、多机器的分布式云端 MCP 服务。Client 建立 SSE 长连接接收 Server 推送的异步消息，通过 HTTP POST 提交 JSON-RPC 请求。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>三、MCP 运行时拓扑：从星型解耦到统一总线</h2>
+    <p>下图展示了现代 Agent 系统接入 MCP 协议后的运行时拓扑结构：Host（宿主）无需感知底层存储实现，只需维护轻量的 MCP 客户端连接池，所有异构工具与上下文管道实现<strong>即插即用</strong>。</p>
+
+    <pre class="mermaid">
+flowchart TD
+    subgraph HostRuntime ["Agent 宿主环境 (MCP Host / Client)"]
+        LLM_Engine["大模型内核 (LLM Reasoning Core)"]
+        ContextManager["上下文装配器 (Context Assembler)"]
+        SecurityGate["用户审批与权限门禁 (Auth &amp; Approval Gate)"]
+    end
+
+    subgraph TransportBus ["MCP 标准化总线 (JSON-RPC 2.0)"]
+        direction TB
+        StdioPipe["本地进程管道 (stdio Transport)"]
+        SseHttp["远程网络通道 (SSE + HTTP Transport)"]
+    end
+
+    subgraph McpServers ["解耦的标准化 MCP 服务端 (MCP Servers)"]
+        FS_Server["本地文件系统 Server<br>(Resources: 代码文件 / Tools: 文件修改)"]
+        DB_Server["PostgreSQL 数据库 Server<br>(Resources: 库表Schema / Tools: 只读执行SQL)"]
+        Git_Server["GitHub 协同 Server<br>(Prompts: PR审查模板 / Tools: 创建Issue)"]
+    end
+
+    ContextManager -->|"URI 请求资源 (resources/read)"| StdioPipe
+    SecurityGate -->|"调用工具 (tools/call)"| StdioPipe
+    SecurityGate -->|"远程调用 (tools/call)"| SseHttp
+
+    StdioPipe <--> FS_Server
+    StdioPipe <--> DB_Server
+    SseHttp <--> Git_Server
+
+    FS_Server -.->|"只读文件内容流"| ContextManager
+    DB_Server -.->|"Schema 元数据投影"| ContextManager
+    Git_Server -.->|"PR Diff 结构化产物"| ContextManager
+
+    ContextManager -->|"装配统一 Prompt 视窗"| LLM_Engine
+    LLM_Engine -->|"生成工具调用决策"| SecurityGate
+    </pre>
+
+    <div class="card">
+      <div class="card-title">💡 架构师关键认知：为什么 Resources 与 Tools 的分离至关重要？</div>
+      <p style="font-size: 14px; margin-bottom: 0;">
+        许多早期 Agent 架构师习惯把“获取数据”也当作一个 Tool（例如提供一个 <code>read_file</code> 工具让 LLM 来调）。<br><br>
+        <strong>但从系统工程角度看，这造成了极大的延迟与 Token 浪费</strong>：LLM 必须先输出一段工具调用 JSON，等待运行时执行完毕，再将结果放回上下文进行下一轮推理。而 MCP 的 <strong>Resources</strong> 机制允许客户端在与用户发起会话前，直接将关键上下文资源（如当前光标所在的文件、最新的日志切片）以统一 URI 声明式预填充到 Prompt 中。<br><br>
+        <strong>把只读数据流（Resources）与状态修改动作（Tools）在协议层彻底分离，是构建高性能、高安全响应式 Agent 的核心分水岭！</strong>
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="takeaway">
+      <h3>今日 1 分钟架构底线（Takeaway）</h3>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary);">
+        <li><strong>拥抱开放标准，拒绝重复造轮子</strong>：MCP 将行业 N×M 的适配器集成灾难降低为 (N+M) 的解耦标准；未来的 Agent 工具选型应优先选择原生支持 MCP 的服务端。</li>
+        <li><strong>严守三原语语义分工</strong>：只读上下文走 Resources，强副作用动作走 Tools 并前置安全审批门禁，复杂交互流程封装为 Prompts 模板。</li>
+        <li><strong>本地优先选 stdio，云端分布式选 SSE</strong>：单机研发与 IDE 插件首选 stdio 管道，天然借用操作系统 UID 隔离；跨节点微服务编排采用 SSE 异步长连。</li>
+      </ol>
+    </div>
+
+    <div class="card" style="margin-top: 18px; padding: 14px;">
+      <div class="card-title" style="color: var(--accent); font-size: 15px;">🎯 架构师课后微测验</div>
+      <p style="margin-bottom: 10px; font-weight: 500; color: var(--text-primary);">
+        <strong>思考题</strong>：某银行内部正在搭建一套金融合规审查 Agent，计划通过 MCP 协议集成核心交易数据库。安全架构师评审时提出质疑：“如果给大模型接入了支持执行任意 SQL 的 MCP Server（Tools: <code>execute_sql</code>），一旦发生 Prompt Injection，黑客可能诱导 Agent 执行 DROP TABLE 或脱库查询”。请基于 MCP 的原生协议能力与分层架构，提出至少两项优雅的纵深防御架构方案。
+      </p>
+      <details style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+        <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 13px;">🔍 点击展开：架构解析与参考答案</summary>
+        <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+          <strong>优雅的纵深防御架构方案：</strong><br><br>
+          1. <strong>降级为只读 Resources 原语与受限视图（Schema as Resource, Not Tool）</strong>：<br>
+          • 严禁向模型暴露通用的 <code>execute_sql(query: string)</code> 这种图灵完备的危险工具；<br>
+          • 数据库表结构、合规审计规则统一作为 <strong>MCP Resources</strong>（例如 <code>postgres://view/audit_summary</code>），仅供只读上下文投影，物理上切断模型拼接破坏性 SQL 的执行通道；<br>
+          • 若确需查询数据，仅暴露高内聚的业务语义级 Tools（如 <code>get_transaction_by_id(tx_id: string)</code>），底层使用参数化绑定查询，禁止任何动态 SQL 拼接。<br><br>
+          2. <strong>Host 宿主层的人机回环（Human-in-the-Loop）与最小特权沙箱</strong>：<br>
+          • 遵循 MCP 规范，所有具有写权限或影响范围超过阈值的 Tools 调用，必须经过 Host 层的 <strong>SecurityGate 拦截与用户显式确认（User Confirmation）</strong>；<br>
+          • 在 MCP Server 侧，连接数据库的底层连接池强制使用只读且严格限制行数（LIMIT 100）的专用只读账号，并借助 Linux 命名空间/容器沙箱限制 stdio 进程的网络出站访问，防止数据被外发外泄。
+        </div>
+      </details>
+    </div>
+  </section>
+</body>
+</html>

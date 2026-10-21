@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>篇章 5 综合复习：多智能体协同网络与企业级基础设施架构评审</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">里程碑复习 · 篇章 5 综合</span>
+    <h1>篇章 5 综合复习：多智能体协同网络与企业级基础设施架构评审</h1>
+    <div class="subtitle">建议阅读时长：8~10 分钟 | 分布式多智能体与基础设施总结篇</div>
+  </header>
+
+  <section>
+    <h2>一、篇章 5 核心工程机制速查矩阵</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>核心架构模块</th>
+          <th>工程物理本质</th>
+          <th>Android / 系统工程对标</th>
+          <th>架构师第一防御红线</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>13 多智能体通信拓扑</strong></td>
+          <td>以结构化状态黑板（Blackboard）与强类型事件总线解耦自然语言群聊雪崩</td>
+          <td>EventBus / BroadcastReceiver 消息总线 + ContentProvider / Room 共享状态底座</td>
+          <td>坚决禁止无结构自然语言 GroupChat，通信拓扑必须严格契约化与单向收敛</td>
+        </tr>
+        <tr>
+          <td><strong>14 模型上下文协议 (MCP)</strong></td>
+          <td>基于 JSON-RPC 2.0 的开放 Client-Server 协议，解耦工具（Tools）、资源（Resources）与提示模板（Prompts）</td>
+          <td>Android ContentProvider (URI 抽象) + HAL 硬件抽象层与 AIDL / Binder RPC 统一接口</td>
+          <td>只读数据流严禁包装为 Tool 耗损推理；强副作用工具必须前置 Host 审批门禁</td>
+        </tr>
+        <tr>
+          <td><strong>15 生产级 AgentOps 追踪</strong></td>
+          <td>基于 OpenTelemetry GenAI 语义建立四层树状 Span 拓扑，结合 Token 熔断与确定性重放调试</td>
+          <td>Linux ftrace 内核切片 Perfetto / Systrace 追踪 + ANR Bugreport 内存快照与离线重放</td>
+          <td>严禁裸奔 Agent 进入生产；必须配置 Token 预算熔断器与边缘敏感数据脱敏网关</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>二、篇章 5 企业级多智能体协同与基础设施全景架构拓扑图</h2>
+    <pre class="mermaid">
+flowchart TD
+    subgraph ClientLayer ["用户与业务调用端 (Clients)"]
+        UserReq["开发者 IDE / 业务终端请求"]
+    end
+
+    subgraph MasterCoord ["协调层：主控与状态黑板 (Orchestration & State)"]
+        SupervisorAgent["Supervisor 主控 Agent<br>(负责目标拆解与状态机裁决)"]
+        BlackboardStore[("共享状态黑板 (Blackboard Store)<br>全局任务状态机 / 依赖图 / 产物槽位")]
+        EventBus["异步强类型事件总线 (Event Bus)"]
+    end
+
+    subgraph WorkerAgents ["专职业务智能体网络 (Worker Sub-Agents)"]
+        ArchitectAgent["架构设计 Agent<br>(生成不可变设计规范)"]
+        CodingAgent["实施编码 Agent<br>(执行差异补丁与代码编写)"]
+        SecurityAgent["安全合规 Agent<br>(代码审计与敏感词过滤)"]
+    end
+
+    subgraph McpInfra ["标准化数据与工具总线 (MCP Protocol Layer)"]
+        McpClient["MCP Client 连接池 (JSON-RPC 2.0)"]
+        LocalStdio["本地 stdio 进程管道 Server<br>(安全沙箱执行 CLI / AST 编译器)"]
+        RemoteSSE["远程 SSE+HTTP 云端 Server<br>(企业代码仓 / 内部知识库 / 数据库)"]
+    end
+
+    subgraph ObservabilityLayer ["生产级 AgentOps 可观测性中枢 (OpenTelemetry)"]
+        OTelGate["OTel 采集网关 (PII 脱敏 + 尾部采样 + Token 熔断)"]
+        SpanTree[("OTel 分布式 Trace 库<br>L1:Session -> L2:Agent -> L3:Step -> L4:Atomic")]
+        ReplayEngine["离线确定性重放器 (Deterministic Replay)"]
+    end
+
+    UserReq --> SupervisorAgent
+    SupervisorAgent <--> BlackboardStore
+    SupervisorAgent --> EventBus
+    EventBus --> ArchitectAgent
+    EventBus --> CodingAgent
+    EventBus --> SecurityAgent
+
+    ArchitectAgent <--> BlackboardStore
+    CodingAgent <--> BlackboardStore
+    SecurityAgent <--> BlackboardStore
+
+    CodingAgent --> McpClient
+    SecurityAgent --> McpClient
+    McpClient --> LocalStdio
+    McpClient --> RemoteSSE
+
+    SupervisorAgent -.->|遥测事件流| OTelGate
+    WorkerAgents -.->|遥测事件流| OTelGate
+    McpClient -.->|遥测事件流| OTelGate
+
+    OTelGate --> SpanTree
+    SpanTree -.->|故障现场快照加载| ReplayEngine
+    </pre>
+  </section>
+
+  <section>
+    <h2>三、实战架构评审题：跨团队“代码安全审计与自动化发布中枢”方案评审</h2>
+    <div class="card">
+      <div class="card-title">🚨 场景评审：企业级多智能体平台上线前的架构大考</div>
+      <p><strong>业务背景</strong>：某头部金融科技集团计划搭建一套由 AI 驱动的“代码安全审查与准入发布中枢”，支撑集团数千名工程师的日常代码上线。项目组提交了如下初始技术架构方案：</p>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary); line-height: 1.8;">
+        <li><strong>协作拓扑设计</strong>：在主群组中放置 4 个 Agent（需求对齐 Agent、代码审查 Agent、静态安全 Agent、发布控制 Agent），通过群组轮询广播自然语言对话，各 Agent 自行发表意见，当所有 Agent 在对话中表达“同意发布”后触发上线；</li>
+        <li><strong>工具集成设计</strong>：为每个 Agent 编写定制 Python 适配代码，把 GitLab API、生产数据库直接暴露为带执行写权限的通用 <code>curl_exec</code> 工具，直连各微服务；</li>
+        <li><strong>运维监控设计</strong>：使用传统 Nginx 访问日志与微服务 HTTP 错误率进行报警，当出现偶发未知异常时，安排研发在线上手动重新触发一次全流程观察控制台输出。</li>
+      </ol>
+      <p>请以集团首席系统架构师视角，指出该方案在<strong>通信拓扑、协议集成与生产可观测性</strong>上的重大致命漏洞，并给出具体的架构改造决策。</p>
+    </div>
+
+    <details style="margin-top: 18px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+      <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 15px;">🔍 点击展开：架构师级重构与决策方案</summary>
+      <div style="margin-top: 12px; font-size: 14px; color: var(--text-secondary); line-height: 1.7;">
+        <p><strong>致命缺陷 1：自然语言广播死锁与非确定性决策崩塌（改造方案：黑板模式 + 确定性状态机）</strong>：<br>
+        • <strong>缺陷</strong>：广播群聊会导致 Token 消耗随轮次平方级爆炸，自然语言表达的“同意”缺乏确定性语义契约，极易发生“客套死循环”或因微小提示词扰动误判放行严重漏洞；<br>
+        • <strong>决策</strong>：彻底废弃群聊模式，采用 <strong>Supervisor + 共享状态黑板模式（Blackboard）</strong>。定义不可变的状态机枚举（<code>PENDING_SPEC -> ARCH_VERIFIED -> SECURITY_PASSED -> READY_TO_DEPLOY</code>）。每个 Agent 仅向黑板槽位提交强类型的 JSON 结构体验收报告（通过受限解码保证格式），由 Supervisor 以确定性代码规则裁决是否跃迁，杜绝模糊放行。</p>
+
+        <p><strong>致命缺陷 2：烟囱式私有适配与高危未隔离工具提权（改造方案：MCP 标准总线 + 最小特权沙箱）</strong>：<br>
+        • <strong>缺陷</strong>：直接暴露 <code>curl_exec</code> 和生产库连接串等同于将图灵完备的执行权限交给概率机，一旦发生 Prompt Injection，黑客可轻易进行内网穿透与数据库脱库；<br>
+        • <strong>决策</strong>：全面推行 <strong>Model Context Protocol (MCP)</strong> 标准化。只读数据（代码仓、安全规则库）必须通过只读 <strong>Resources 原语</strong> 挂载，彻底剥离写权限；对于高危的发布操作（Tools），必须运行在本地独立 stdio 沙箱进程中，并由 Host 端设置强制性的 <strong>人机协同双人复核门禁（Human-in-the-Loop Approval Gate）</strong>，未经管理员私钥签名严禁执行。</p>
+
+        <p><strong>致命缺陷 3：监控盲区与无法复现的排障黑洞（改造方案：OpenTelemetry 四层 Span + 确定性快照重放）</strong>：<br>
+        • <strong>缺陷</strong>：传统 Nginx / HTTP 监控对多轮思考、幻觉级联与 Token 死循环完全失明；线上出现偶发问题重新跑一次因模型采样概率性极难复现且极大消耗 API 成本；<br>
+        • <strong>决策</strong>：接入 <strong>OpenTelemetry GenAI 规范</strong>。实现 L1 Session &rarr; L2 Agent &rarr; L3 Step &rarr; L4 Tool 的四层树状 Span 追踪，并配置 Token 预算熔断器防止死循环。故障发生时，利用 TraceStore 保存的执行现场快照，通过 <strong>确定性重放引擎（Deterministic Replay）</strong> 在本地 Mock 前序步骤快速复现故障，低成本完成根因归因与 Prompt 修复。</p>
+      </div>
+    </details>
+  </section>
+</body>
+</html>

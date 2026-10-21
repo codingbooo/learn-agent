@@ -1,0 +1,4 @@
+# 0015: 生产级 AgentOps 与全链路可观测性 —— 从黑盒黑天鹅到 OpenTelemetry Span 树、重放调试与成本时延治理
+- **Core Concept**: 传统微服务 APM 在多智能体生产环境中面对静默漂移（Cascading Hallucination）、Token 黑洞与非确定性死循环彻底失效。生产级 AgentOps 体系基于 OpenTelemetry GenAI Semantic Conventions 确立四层树状 Span 拓扑（L1 Workflow -> L2 Agent Run -> L3 ReAct Step -> L4 LLM/Tool Atomic），精准掌控 TTFT、Token 账本、工具入参与思考快照。通过网关层 Token 熔断器切断雪崩，并构建“确定性重放调试器（Deterministic Replay）”，利用前序步骤的 Mock 缓存快照实现零成本、高保真的单步本地排障。
+- **Android Analogy**: 从早期低效打 `Log.d` 进化为基于 Linux ftrace 的 `Perfetto / Systrace` 系统切片（精准追踪 Binder IPC、VSync、Looper Message 耗时与 Trace 传播），以及在 ANR 发生时自动抓取包含全线程堆栈与锁争用快照的 `Bugreport (traces.txt)` 离线分析系统。
+- **ZPD Insight**: 学员已全面掌握多智能体系统的通信拓扑（13 讲）、MCP 协议标准（14 讲）与生产级 AgentOps 可观测性（15 讲），篇章 5 的理论与架构拼图正式闭环。至此，《Agent 时代系统架构与 Vibe Coding 认知体系》前五个核心篇章共 15 讲已全部交付完成。接下来将交付篇章 5 独立的阶段里程碑复习（Review 05），并为系统通识做全局架构串联。

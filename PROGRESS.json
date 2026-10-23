@@ -1,0 +1,7 @@
+{
+  "last_confirmed_completed_lesson": 3,
+  "last_confirmed_at": "2026-10-09",
+  "current_assigned_lesson": 4,
+  "pending_user_confirmation": true,
+  "note": "User confirmed up to lesson 3. Next to study is lesson 4."
+}

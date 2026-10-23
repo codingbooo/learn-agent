@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>第 17 讲：端云协同分层架构与动态路由 —— 从意图门禁分流、端云投机解码（Speculative Decoding）到隐私脱敏管道</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: isDark ? '#1e293b' : '#ffffff',
+        primaryTextColor: isDark ? '#f8fafc' : '#0f172a',
+        primaryBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        lineColor: isDark ? '#94a3b8' : '#475569',
+        textColor: isDark ? '#f8fafc' : '#0f172a',
+        mainBkg: isDark ? '#1e293b' : '#ffffff',
+        nodeBorder: isDark ? '#475569' : '#cbd5e1',
+        actorBkg: isDark ? '#1e293b' : '#f8fafc',
+        actorBorder: isDark ? '#3b82f6' : '#2563eb',
+        actorTextColor: isDark ? '#f8fafc' : '#0f172a',
+        actorLineColor: isDark ? '#475569' : '#cbd5e1',
+        signalColor: isDark ? '#94a3b8' : '#334155',
+        signalTextColor: isDark ? '#f8fafc' : '#0f172a',
+        labelBoxBkgColor: isDark ? '#0f172a' : '#ffffff',
+        labelBoxBorderColor: isDark ? '#334155' : '#cbd5e1',
+        labelTextColor: isDark ? '#f8fafc' : '#0f172a',
+        loopTextColor: isDark ? '#f8fafc' : '#0f172a',
+        noteBorderColor: isDark ? '#334155' : '#cbd5e1',
+        noteBkgColor: isDark ? '#334155' : '#e2e8f0',
+        noteTextColor: isDark ? '#f8fafc' : '#0f172a',
+        activationBorderColor: isDark ? '#3b82f6' : '#2563eb',
+        activationBkgColor: isDark ? '#1e3a8a' : '#dbeafe',
+        sequenceNumberColor: '#ffffff'
+      },
+      securityLevel: 'loose',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <span class="meta-badge">篇章 6 · 端侧智能与端云协同 · 第 17 讲</span>
+    <h1>端云协同分层架构与动态路由 —— 从意图门禁分流、端云投机解码（Speculative Decoding）到隐私脱敏管道</h1>
+    <div class="subtitle">建议阅读时长：8~10 分钟 | 混合智能体与端云协同架构</div>
+  </header>
+
+  <section>
+    <h2>一、单极架构的物理死局：为何端云协同是商业化智能体的终局？</h2>
+    <p>在前一讲中，我们探讨了端侧小模型（SLM）在内存量化（W4A16）与 NPU 硬件加速下的生存底线。然而，端侧并不是万能药：受限于移动芯片硅片面积与电池功耗包络，1B~3B 的小模型在面对长程复杂推理、多步数学归纳、代码生成和跨域广博知识库时，其参数容量与注意力头数量存在不可逾越的<strong>知识密度上限（Knowledge Capacity Ceiling）</strong>。</p>
+    <p>如果退回纯云端大模型方案，架构又会瞬间落入<strong>高时延（RTT + 队列排队）、弱网瘫痪、隐私穿透与高昂 Token 算力成本</strong>的泥潭。因此，现代工业界成熟的智能体架构从未选择“纯端”或“纯云”，而是演化出了<strong>端云协同（Edge-Cloud Synergy）的混合分层架构</strong>：端侧充当高灵敏的感知器官、意图门禁与本地执行器；云端充当超大算力中枢、长期深度知识库与复杂规划引擎。</p>
+
+    <div class="analogy">
+      <div class="analogy-title">Android 架构师类比</div>
+      对于精通 Android 体系的工程师而言，端云协同的底层逻辑与移动客户端的系统架构完全相通：<br><br>
+      1. <strong>三级缓存与 Local-First 架构 vs 端云分级推理</strong>：在 Android 数据流设计中，客户端绝不会把所有轻量查询都抛给远端服务器，而是遵循 <code>内存缓存 (Memory Cache) -> 本地 SQLite/Room -> 远端 REST/gRPC (Retrofit)</code>。端侧 SLM 正是这一管道中的“智能本地缓存”——拦截 70% 的低复杂度意图（如闹钟、系统控制、短文本改写），仅将剩余 30% 重型计算渗透给云端；<br>
+      2. <strong>WorkManager 约束调度 (Constraints) vs 动态路由上下文决策</strong>：正如 Android <code>WorkManager</code> 根据 <code>NetworkType.CONNECTED</code>、<code>BatteryNotLow</code>、<code>DeviceIdle</code> 动态决定任务是立刻执行、静默降级还是等待充电时同步，端云智能体路由器根据设备当前的网络制式（WiFi/5G/弱网）、电量水平与芯片 Thermal 状态，动态调节端云分流策略；<br>
+      3. <strong>RenderThread 预录制与 SurfaceFlinger 合成 vs 端云投机解码（Speculative Decoding）</strong>：Android UI 架构中，UI 线程和 RenderThread 在本地以 120fps 快速绘制帧草稿（DisplayList），底层的 SurfaceFlinger 进行最终硬件图层合成与垂直同步校验。端云投机解码正是由端侧 SLM 以极低延迟在本地连续产出 Token 草稿，云端大模型通过并行批验证纠偏，兼顾零感首字响应与云端超高准确率。
+    </div>
+  </section>
+
+  <section>
+    <h2>二、四种主流端云协同模式与技术选型矩阵</h2>
+    <p>在设计端云智能体系统时，架构师必须根据时延预算、隐私等级和算力成本在以下四种协同模式中权衡：</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>协同模式</th>
+          <th>执行拓扑与交互机制</th>
+          <th>首字时延 (TTFT)</th>
+          <th>隐私与脱敏能力</th>
+          <th>网络鲁棒性</th>
+          <th>典型工业落地场景</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>纯端侧封闭执行 (On-Device Only)</strong></td>
+          <td>输入与模型全量驻留端侧 NPU，零网络上行</td>
+          <td>极低 (20ms~80ms)</td>
+          <td>最高 (物理级零数据泄露)</td>
+          <td>完全支持离线/飞行模式</td>
+          <td>系统级交互、离线语音唤醒、隐私相册分类、车载离线控制</td>
+        </tr>
+        <tr>
+          <td><strong>本地门禁分流 (Semantic Gateway)</strong></td>
+          <td>端侧 SLM 充当轻量 Router，简单任务本地完结，复杂意图上云</td>
+          <td>本地 50ms / 云端 600ms</td>
+          <td>高 (本地端侧完成 PII 过滤与脱敏)</td>
+          <td>弱网降级执行本地子集</td>
+          <td>智能助手（如 Apple Intelligence / 小米澎湃智能 / 荣耀 MagicOS）</td>
+        </tr>
+        <tr>
+          <td><strong>端云投机解码 (Speculative Decoding)</strong></td>
+          <td>端侧 SLM 充当 Draft Model 预测 Token，云端通过 1 次 Forward 批验证</td>
+          <td>超低感知延迟 (端侧逐字吐出)</td>
+          <td>中 (需将 Prompt 与 Draft 发送云端)</td>
+          <td>强依赖低时延网络环境</td>
+          <td>端云协同写作补全、实时长篇代码生成、交互式推理问答</td>
+        </tr>
+        <tr>
+          <td><strong>特征投射与脱敏管道 (Feature Projection)</strong></td>
+          <td>端侧提取 Embeddings / 中间表征，抹去 PII 明文后再同步至云端</td>
+          <td>中等 (150ms~300ms)</td>
+          <td>极高 (云端仅接收数学向量或匿名特征)</td>
+          <td>需要稳定上行信道</td>
+          <td>端侧个性化推荐、跨设备情境记忆检索、合规企业级端云办公</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>三、端云协同系统拓扑与动态路由架构</h2>
+    <p>下图展示了具备动态意图路由、端侧隐私过滤与端云投机协同的端到端系统架构链路：</p>
+
+    <pre class="mermaid">
+flowchart TD
+    subgraph ClientDevice ["移动终端 (Android Edge Client)"]
+        UserInput["用户原始输入 (文本 / 语音 / 屏幕上下文)"]
+        
+        subgraph EdgeGuard ["端侧安全与意图门禁 (Edge Gatekeeper)"]
+            PIIFilter["PII 隐私嗅探器 (正则 / 本地敏感实体 NER)"]
+            RouterSLM["端侧轻量 SLM 意图路由器 (1B~2B)"]
+            DeviceContext["设备状态探针 (网络 RTT / 电量 / 芯片温度)"]
+        end
+        
+        subgraph EdgeRuntime ["端侧执行引擎 (On-Device Runtime)"]
+            LocalSLM["本地 SLM 执行引擎 (QNN / NPU 加速)"]
+            DraftWorker["Speculative Draft 投机草稿生成器"]
+            LocalAppAction["系统级 App Actions / Intent 本地执行"]
+        end
+        
+        Desensitizer["数据脱敏与特征投影管道 (Data Anonymizer)"]
+    end
+
+    subgraph CloudInfra ["云端智能中枢 (Cloud Cluster)"]
+        CloudGateway["API 安全网关 & 配额校验 (gRPC Gateway)"]
+        CloudLLM["云端千亿/万亿级大模型 (70B+ / MoE)"]
+        VerificationEngine["投机解码验证器 (Batch Verification)"]
+        DeepSearchAgent["云端深度检索与多工具 Agent (MCP Hub)"]
+    end
+
+    UserInput --> PIIFilter
+    PIIFilter --> RouterSLM
+    DeviceContext -.->|"动态输入: 当前处于弱网或低电量"| RouterSLM
+
+    RouterSLM -->|"意图 1: 本地系统控制/敏感私密"| LocalSLM
+    LocalSLM --> LocalAppAction
+
+    RouterSLM -->|"意图 2: 复杂开放任务 (且网络良好)"| Desensitizer
+    Desensitizer -->|"脱敏明文 / 语义向量"| CloudGateway
+    CloudGateway --> CloudLLM
+    CloudLLM --> DeepSearchAgent
+
+    RouterSLM -->|"意图 3: 实时交互长文本生成"| DraftWorker
+    DraftWorker -->|"预生成 Token Draft"| CloudGateway
+    CloudGateway --> VerificationEngine
+    VerificationEngine -->|"接收 Draft / 并行纠偏补全"| CloudLLM
+    </pre>
+
+    <div class="card">
+      <div class="card-title">💡 架构师关键认知：端云投机解码（Speculative Decoding）与隐私防线</div>
+      <p style="font-size: 14px; margin-bottom: 0;">
+        <strong>1. 端云投机解码的时延折叠效应</strong>：传统云端推理是按 Token 逐步串行输出，每次输出都要经历一次云端计算与网络传输。投机解码（Speculative Decoding）利用端侧 SLM（如 1.5B）与云端大模型（如 70B）共享相同词表（Tokenizer）。端侧小模型以极高帧率（如 50 tokens/s）瞬时押注生成接下来的 5~8 个 Token；云端大模型接收这批 Draft，只需做<strong>单次 Forward 验证（并行验证所有 Token 的 Logit 条件概率）</strong>。如果端侧预测中 4 个，云端相当于用 1 次计算步长瞬间收敛了 4 个 Token，端到端吞吐量提升 2~3 倍，且用户端首字立刻上屏，体验极其流畅。<br><br>
+        <strong>2. 隐私数据边界的“沙箱投影”原则</strong>：在端云架构中，用户的个人标识信息（PII，如身份证号、手机通讯录明细、人脸特征、GPS 绝对经纬度）绝不能原始打包上云。端侧安全门禁需执行两级操作：要么直接在端侧执行本地意图；要么在端侧进行<strong>本地摘要降维（Summarization / Extraction）</strong>或<strong>特征投影（Embedding Projection）</strong>，仅将匿名化后的语义实体提交给云端大模型，确保合规与用户信任。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="takeaway">
+      <h3>今日 1 分钟架构底线（Takeaway）</h3>
+      <ol style="padding-left: 20px; font-size: 14px; color: var(--text-secondary);">
+        <li><strong>端云协同不是妥协，而是兼顾物理时延与智商上限的最优解</strong>：以端侧 SLM 兜底 70% 本地即时交互与隐私隔离，以云端大模型保障 30% 复杂推理与全局通识。</li>
+        <li><strong>端侧意图门禁与状态路由是核心调度器</strong>：结合网络 QoS、电量、热状态与 PII 敏感度，动态决断“本地消化”、“脱敏上云”或“端云投机协同”。</li>
+        <li><strong>善用投机解码（Speculative Decoding）重构用户交互时延</strong>：端侧草稿（Draft）+ 云端批验证（Verify），打破单次 Forward 网络串行等待，实现无感流式响应。</li>
+      </ol>
+    </div>
+
+    <div class="card" style="margin-top: 18px; padding: 14px;">
+      <div class="card-title" style="color: var(--accent); font-size: 15px;">🎯 架构师课后微测验</div>
+      <p style="margin-bottom: 10px; font-weight: 500; color: var(--text-primary);">
+        <strong>思考题</strong>：某移动应用正在开发一个“个人差旅智能助理”功能，涉及解析本地短信中的订票信息、查询航班实时起降状态、以及调用云端多智能体为用户规划包含当地天气的复杂差旅日程。若由你担任移动系统架构师，请结合 Android 端云协同架构，设计一个兼顾用户隐私、网络抗脆弱性与首屏流畅度的三层分流与执行链路。
+      </p>
+      <details style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 10px;">
+        <summary style="font-weight: 600; cursor: pointer; color: var(--accent); font-size: 13px;">🔍 点击展开：架构解析与参考答案</summary>
+        <div style="margin-top: 8px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+          <strong>参考落地架构设计：</strong><br><br>
+          1. <strong>第一层：端侧隐私隔离与本地结构化提取（L1 - Edge Local & PII Enclave）</strong>：<br>
+          • 用户的原始短信（SMS）包含真实姓名、身份证后四位及手机号等绝对隐私，严禁直接上传云端；<br>
+          • 利用端侧常驻的 1.5B 结构化提取小模型（通过 QNN / NPU 加速），在本地以受限解码直接解析出匿名结构化元数据（如 <code>{ flight: "CA1501", date: "2026-11-05", dep: "PEK", arr: "SHA" }</code>）；<br>
+          • 敏感个人信息直接留在本地 Room 数据库中，完成第一道数据脱敏。<br><br>
+          2. <strong>第二层：端侧状态感知与动态路由分流（L2 - Context-Aware Router）</strong>：<br>
+          • 结合 Android <code>ConnectivityManager</code> 与设备状态探针检测网络状况：<br>
+          • 若处于弱网或无网络（如机场滑行期间）：直接在端侧检索本地缓存的历史日程，触发本地 App Actions 弹出离线日程卡片，确保系统可用性底线；<br>
+          • 若网络良好（WiFi / 5G）：仅将脱敏后的航班号与出行日期参数通过 gRPC 安全网关上报至云端。<br><br>
+          3. <strong>第三层：云端重型 Agent 工具协同与端侧投机式首屏渲染（L3 - Cloud Agent & Progressive Rendering）</strong>：<br>
+          • 云端接收脱敏参数后，调度航班查询 API、气象 API 及大模型进行跨域日程规划排期；<br>
+          • 在云端深度计算的同时，端侧利用 SLM 结合本地模版优先产出“骨架屏与基础日程卡片（Draft View）”，实现零延迟上屏；<br>
+          • 云端重型 Agent 生成全量丰富攻略后，通过 Server-Sent Events (SSE) 流式下发，端侧通过 Diff 补丁动态注入天气与出行建议，兼具极致隐私安全与丝滑流畅体验。
+        </div>
+      </details>
+    </div>
+  </section>
+</body>
+</html>

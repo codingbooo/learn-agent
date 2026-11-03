@@ -1,7 +1,7 @@
 {
-  "last_confirmed_completed_lesson": 3,
-  "last_confirmed_at": "2026-10-09",
-  "current_assigned_lesson": 4,
+  "last_confirmed_completed_lesson": 4,
+  "last_confirmed_at": "2026-11-03",
+  "current_assigned_lesson": 5,
   "pending_user_confirmation": true,
-  "note": "User confirmed up to lesson 3. Next to study is lesson 4."
+  "note": "User confirmed up to lesson 4 (agent loop & state machine). Next to study is lesson 5 (tool calling protocols & sandboxing), already published on Pages."
 }

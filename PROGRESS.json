@@ -3,5 +3,7 @@
   "last_confirmed_at": "2026-11-03",
   "current_assigned_lesson": 5,
   "pending_user_confirmation": true,
-  "note": "User confirmed up to lesson 4 (agent loop & state machine). Next to study is lesson 5 (tool calling protocols & sandboxing), already published on Pages."
+  "last_reminder_at": "2026-11-17",
+  "reminder_count": 1,
+  "note": "User confirmed up to lesson 4 (agent loop & state machine). Next to study is lesson 5 (tool calling protocols & sandboxing), already published on Pages. No new lesson generated until user confirms lesson 5."
 }

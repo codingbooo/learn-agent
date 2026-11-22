@@ -3,7 +3,7 @@
   "last_confirmed_at": "2026-11-03",
   "current_assigned_lesson": 5,
   "pending_user_confirmation": true,
-  "last_reminder_at": "2026-11-21",
-  "reminder_count": 5,
-  "note": "User confirmed up to lesson 4 (agent loop & state machine). Next to study is lesson 5 (tool calling protocols & sandboxing), published on Pages and verified live (HTTP 200). No new lesson generated until user confirms lesson 5. Fifth reminder sent 2026-11-21 with a low-pressure exit: user may reply 'lesson 5 done', 'skip to lesson 6', or 'pause the course'. Gate still holds — lessons 6-17 exist on disk but are NOT served until user confirms. Escalate cadence to every 2-3 days if no reply by 2026-11-24."
+  "last_reminder_at": "2026-11-22",
+  "reminder_count": 6,
+  "note": "Gate holds: user confirmed through lesson 4 only. Lesson 5 (tool calling protocols & sandboxing) is assigned, published on Pages and verified live (HTTP 200) on 2026-11-22. 6th reminder sent 2026-11-22 after 19 days of silence. Cadence now downshifted to low-frequency: next reminder 2026-11-24, then every 3 days, so the daily job suppresses output ([SILENT]) on non-reminder days until the user replies. Open exit paths for the user: 'lesson 5 done' (advance to 6), 'skip to lesson 6' (advance, lesson 5 marked skipped), 'pause the course' (stop reminders). Lessons 6-17 exist on disk but stay unassigned/unlocked until confirmation."
 }

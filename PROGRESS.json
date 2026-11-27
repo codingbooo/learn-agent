@@ -3,7 +3,7 @@
   "last_confirmed_at": "2026-11-03",
   "current_assigned_lesson": 5,
   "pending_user_confirmation": true,
-  "last_reminder_at": "2026-11-24",
-  "reminder_count": 7,
-  "note": "Gate holds: user confirmed through lesson 4 only. Lesson 5 (tool calling protocols & sandboxing) is assigned, published on Pages and verified live (HTTP 200 re-checked 2026-11-24). 7th reminder sent 2026-11-24 after 21 days of silence. Cadence is low-frequency: next reminder 2026-11-27, then every 3 days, so the daily job suppresses output ([SILENT]) on non-reminder days until the user replies. Open exit paths for the user: 'lesson 5 done' (advance to 6), 'skip to lesson 6' (advance, lesson 5 marked skipped), 'pause the course' (stop reminders). Lessons 6-17 exist on disk but stay unassigned/unlocked until confirmation."
+  "last_reminder_at": "2026-11-27",
+  "reminder_count": 8,
+  "note": "Gate holds: user confirmed through lesson 4 only. Lesson 5 (tool calling protocols & sandboxing) is assigned, published on Pages and verified live (HTTP 200 re-checked 2026-11-27). 8th reminder sent 2026-11-27 after 24 days of silence. Cadence is low-frequency: next reminder 2026-11-30, then every 3 days, so the daily job suppresses output ([SILENT]) on non-reminder days until the user replies. Open exit paths for the user: 'lesson 5 done' (advance to 6), 'skip to lesson 6' (advance, lesson 5 marked skipped), 'pause the course' (stop reminders). Lessons 6-17 exist on disk but stay unassigned/unlocked until confirmation."
 }
